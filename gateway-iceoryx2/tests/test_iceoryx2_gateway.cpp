@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  ********************************************************************************/
 
+#include "opensomeip/gateway/gateway_base.h"
 #include "opensomeip/gateway/iceoryx2/iceoryx2_gateway.h"
 #include "opensomeip/gateway/iceoryx2/iceoryx2_translator.h"
 
@@ -22,22 +23,32 @@ TEST(Iceoryx2ConfigTest, Defaults) {
 }
 
 TEST(Iceoryx2TranslatorTest, BuildServiceName) {
-    Iceoryx2MessageTranslator translator;
-    auto name = translator.build_iceoryx2_service_name("someip", 0x1234, 0x0001);
-    EXPECT_EQ(name, "someip/0x1234/0x0001");
+    const std::string expected = std::string("someip/") + format_hex16(0x1234) + "/" +
+                                 format_hex16(0x0001) + "/" + format_hex16(0x8001) + "/N";
+    auto name = Iceoryx2MessageTranslator::build_iceoryx2_service_name("someip", 0x1234, 0x0001,
+                                                                       0x8001, 'N');
+    EXPECT_EQ(name, expected);
 }
 
 TEST(Iceoryx2TranslatorTest, EnvelopeRoundTrip) {
     Iceoryx2MessageTranslator translator;
 
+    const uint16_t instance_id = 0x0001;
     someip::MessageId msg_id(0x1234, 0x0001);
     someip::RequestId req_id(0x00AB, 0x00CD);
     someip::Message msg(msg_id, req_id, someip::MessageType::REQUEST);
     msg.set_payload({0x10, 0x20, 0x30});
 
-    Iceoryx2Envelope env = translator.someip_to_envelope(msg);
+    std::vector<uint8_t> sample = translator.someip_to_sample(msg, instance_id, TranslationMode::OPAQUE);
+    ASSERT_FALSE(sample.empty());
+    auto opt_env = translator.parse_sample(sample);
+    ASSERT_TRUE(opt_env.has_value());
+    const Iceoryx2Envelope& env = *opt_env;
+
     EXPECT_EQ(env.service_id, 0x1234);
-    EXPECT_EQ(env.method_id, 0x0001);
+    EXPECT_EQ(env.instance_id, instance_id);
+    EXPECT_EQ(env.method_or_event_id, 0x0001);
+    EXPECT_EQ(env.message_type, someip::MessageType::REQUEST);
     EXPECT_EQ(env.client_id, 0x00AB);
     EXPECT_EQ(env.session_id, 0x00CD);
     EXPECT_EQ(env.payload.size(), 3u);
@@ -59,32 +70,35 @@ TEST(Iceoryx2TranslatorTest, NotificationEnvelope) {
     someip::Message msg(msg_id, req_id, someip::MessageType::NOTIFICATION);
     msg.set_payload({0xDE, 0xAD, 0xBE, 0xEF});
 
-    Iceoryx2Envelope env = translator.someip_to_envelope(msg);
-    EXPECT_TRUE(env.is_notification);
-    EXPECT_EQ(env.payload.size(), 4u);
+    auto opt_env = translator.parse_sample(
+        translator.someip_to_sample(msg, 0x0001, TranslationMode::OPAQUE));
+    ASSERT_TRUE(opt_env.has_value());
+    EXPECT_EQ(opt_env->message_type, someip::MessageType::NOTIFICATION);
+    EXPECT_EQ(opt_env->method_or_event_id, 0x8001);
+    EXPECT_EQ(opt_env->payload.size(), 4u);
 }
 
-TEST(Iceoryx2TranslatorTest, SerializeDeserializeEnvelope) {
+TEST(Iceoryx2TranslatorTest, SampleWireRoundTrip) {
     Iceoryx2MessageTranslator translator;
 
-    Iceoryx2Envelope env;
-    env.service_id = 0xABCD;
-    env.method_id = 0x0042;
-    env.client_id = 0x0001;
-    env.session_id = 0x0002;
-    env.is_request = true;
-    env.payload = {0x01, 0x02, 0x03, 0x04, 0x05};
+    someip::MessageId msg_id(0xABCD, 0x0042);
+    someip::RequestId req_id(0x0001, 0x0002);
+    someip::Message msg(msg_id, req_id, someip::MessageType::REQUEST);
+    msg.set_payload({0x01, 0x02, 0x03, 0x04, 0x05});
 
-    auto bytes = translator.serialize_envelope(env);
+    const uint16_t instance_id = 0x0303;
+    auto bytes = translator.someip_to_sample(msg, instance_id, TranslationMode::OPAQUE);
     EXPECT_GT(bytes.size(), 5u);
 
-    auto restored = translator.deserialize_envelope(bytes);
-    EXPECT_EQ(restored.service_id, env.service_id);
-    EXPECT_EQ(restored.method_id, env.method_id);
-    EXPECT_EQ(restored.client_id, env.client_id);
-    EXPECT_EQ(restored.session_id, env.session_id);
-    EXPECT_EQ(restored.is_request, env.is_request);
-    EXPECT_EQ(restored.payload, env.payload);
+    auto restored = translator.parse_sample(bytes);
+    ASSERT_TRUE(restored.has_value());
+    EXPECT_EQ(restored->service_id, 0xABCD);
+    EXPECT_EQ(restored->instance_id, instance_id);
+    EXPECT_EQ(restored->method_or_event_id, 0x0042);
+    EXPECT_EQ(restored->message_type, someip::MessageType::REQUEST);
+    EXPECT_EQ(restored->client_id, 0x0001);
+    EXPECT_EQ(restored->session_id, 0x0002);
+    EXPECT_EQ(restored->payload, msg.get_payload());
 }
 
 TEST(Iceoryx2GatewayTest, Lifecycle) {
@@ -135,8 +149,18 @@ TEST(Iceoryx2GatewayTest, OnSomeipMessageWithMapping) {
     auto result = gw.on_someip_message(msg);
     EXPECT_EQ(result, someip::Result::SUCCESS);
 
-    EXPECT_FALSE(captured_name.empty());
+    const std::string expected_name = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
+        cfg.service_name_prefix, mapping.someip_service_id, mapping.someip_instance_id,
+        msg.get_method_id(), 'N');
+    EXPECT_EQ(captured_name, expected_name);
     EXPECT_FALSE(captured_sample.empty());
+
+    auto parsed = Iceoryx2MessageTranslator{}.parse_sample(captured_sample);
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(parsed->service_id, 0x1234);
+    EXPECT_EQ(parsed->instance_id, mapping.someip_instance_id);
+    EXPECT_EQ(parsed->method_or_event_id, 0x0001);
+    EXPECT_EQ(parsed->message_type, someip::MessageType::NOTIFICATION);
 
     auto stats = gw.get_stats();
     EXPECT_EQ(stats.messages_someip_to_external, 1u);
@@ -155,19 +179,22 @@ TEST(Iceoryx2GatewayTest, InjectIceoryx2Sample) {
     mapping.someip_instance_id = 0x0001;
     mapping.external_identifier = "radar/front";
     mapping.direction = GatewayDirection::BIDIRECTIONAL;
+    mapping.someip_method_ids = {0x0001};
     gw.add_service_mapping(mapping);
 
     gw.start();
 
     Iceoryx2MessageTranslator translator;
-    Iceoryx2Envelope env;
-    env.service_id = 0x1234;
-    env.method_id = 0x0001;
-    env.is_notification = true;
-    env.payload = {0xBE, 0xEF};
+    someip::MessageId mid(0x1234, 0x0001);
+    someip::RequestId rid(0x0001, 0x0002);
+    someip::Message msg(mid, rid, someip::MessageType::NOTIFICATION);
+    msg.set_payload({0xBE, 0xEF});
 
-    auto bytes = translator.serialize_envelope(env);
-    gw.inject_iceoryx2_sample("someip/0x1234/0x0001", bytes);
+    auto bytes = translator.someip_to_sample(msg, mapping.someip_instance_id, TranslationMode::OPAQUE);
+    const std::string topic = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
+        cfg.service_name_prefix, mapping.someip_service_id, mapping.someip_instance_id,
+        msg.get_method_id(), 'N');
+    gw.inject_iceoryx2_sample(topic, bytes);
 
     auto stats = gw.get_stats();
     EXPECT_EQ(stats.messages_external_to_someip, 1u);
@@ -187,7 +214,7 @@ TEST(Iceoryx2GatewayTest, UnmappedServiceIgnored) {
     someip::Message msg(msg_id, req_id);
 
     auto result = gw.on_someip_message(msg);
-    EXPECT_EQ(result, someip::Result::SERVICE_NOT_FOUND);
+    EXPECT_EQ(result, someip::Result::INVALID_SERVICE_ID);
 
     auto stats = gw.get_stats();
     EXPECT_EQ(stats.messages_someip_to_external, 0u);

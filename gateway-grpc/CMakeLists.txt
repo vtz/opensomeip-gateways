@@ -1,8 +1,5 @@
-/********************************************************************************
- * Copyright (c) 2025 Vinicius Tadeu Zein
- *
- * SPDX-License-Identifier: Apache-2.0
- ********************************************************************************/
+# Copyright (c) 2025 Vinicius Tadeu Zein
+# SPDX-License-Identifier: Apache-2.0
 
 find_package(Protobuf QUIET)
 find_package(gRPC QUIET)
@@ -28,6 +25,9 @@ endif()
 if(BUILD_TESTS)
     add_executable(test_grpc_gateway tests/test_grpc_gateway.cpp)
     target_link_libraries(test_grpc_gateway PRIVATE opensomeip-gateway-grpc GTest::gtest_main)
+    if(gRPC_FOUND AND Protobuf_FOUND)
+        target_compile_definitions(test_grpc_gateway PRIVATE HAVE_GRPC=1)
+    endif()
     add_test(NAME GrpcGatewayTests COMMAND test_grpc_gateway)
 endif()
 

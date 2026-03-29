@@ -28,7 +28,6 @@ std::string GatewayBase::get_protocol() const {
 }
 
 GatewayStats GatewayBase::get_stats() const {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
     return stats_;
 }
 
@@ -37,37 +36,35 @@ void GatewayBase::add_service_mapping(const ServiceMapping& mapping) {
     service_mappings_.push_back(mapping);
 }
 
-const std::vector<ServiceMapping>& GatewayBase::get_service_mappings() const {
+std::vector<ServiceMapping> GatewayBase::get_service_mappings() const {
+    std::lock_guard<std::mutex> lock(mappings_mutex_);
     return service_mappings_;
 }
 
 void GatewayBase::set_external_message_callback(ExternalMessageCallback callback) {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
     external_message_callback_ = std::move(callback);
 }
 
 void GatewayBase::set_running(bool running) {
     running_.store(running, std::memory_order_release);
     if (running) {
-        std::lock_guard<std::mutex> lock(stats_mutex_);
         stats_.started_at = std::chrono::steady_clock::now();
     }
 }
 
 void GatewayBase::record_someip_to_external(size_t bytes) {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    stats_.messages_someip_to_external++;
-    stats_.bytes_someip_to_external += bytes;
+    stats_.messages_someip_to_external.fetch_add(1, std::memory_order_relaxed);
+    stats_.bytes_someip_to_external.fetch_add(bytes, std::memory_order_relaxed);
 }
 
 void GatewayBase::record_external_to_someip(size_t bytes) {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    stats_.messages_external_to_someip++;
-    stats_.bytes_external_to_someip += bytes;
+    stats_.messages_external_to_someip.fetch_add(1, std::memory_order_relaxed);
+    stats_.bytes_external_to_someip.fetch_add(bytes, std::memory_order_relaxed);
 }
 
 void GatewayBase::record_translation_error() {
-    std::lock_guard<std::mutex> lock(stats_mutex_);
-    stats_.translation_errors++;
+    stats_.translation_errors.fetch_add(1, std::memory_order_relaxed);
 }
 
 const ServiceMapping* GatewayBase::find_mapping_for_service(

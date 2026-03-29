@@ -1,8 +1,5 @@
-/********************************************************************************
- * Copyright (c) 2025 Vinicius Tadeu Zein
- *
- * SPDX-License-Identifier: Apache-2.0
- ********************************************************************************/
+# Copyright (c) 2025 Vinicius Tadeu Zein
+# SPDX-License-Identifier: Apache-2.0
 
 find_package(PahoMqttCpp CONFIG REQUIRED)
 

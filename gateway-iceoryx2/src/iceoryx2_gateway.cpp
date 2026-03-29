@@ -210,7 +210,7 @@ void Iceoryx2Gateway::handle_incoming_envelope(const Iceoryx2Envelope& env,
             }
             auto out_sample =
                 translator_.someip_to_sample(resp, env.instance_id, env.mode);
-            std::string rname = Iceoryx2Translator::build_iceoryx2_service_name(
+            std::string rname = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
                 config_.service_name_prefix, env.service_id, env.instance_id,
                 env.method_or_event_id, 'R');
             (void)publish_toward_iceoryx2(rname, out_sample, mapping);
@@ -228,7 +228,7 @@ someip::Result Iceoryx2Gateway::bridge_pub_sub_someip_to_external(const someip::
                                                                  const ServiceMapping& mapping) {
     const char kind =
         (msg.get_message_type() == someip::MessageType::NOTIFICATION) ? 'N' : 'P';
-    std::string name = Iceoryx2Translator::build_iceoryx2_service_name(
+    std::string name = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
         config_.service_name_prefix, mapping.someip_service_id, mapping.someip_instance_id,
         msg.get_method_id(), kind);
     return publish_toward_iceoryx2(
@@ -238,7 +238,7 @@ someip::Result Iceoryx2Gateway::bridge_pub_sub_someip_to_external(const someip::
 
 someip::Result Iceoryx2Gateway::bridge_rpc_someip_to_external(const someip::Message& msg,
                                                              const ServiceMapping& mapping) {
-    std::string name = Iceoryx2Translator::build_iceoryx2_service_name(
+    std::string name = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
         config_.service_name_prefix, mapping.someip_service_id, mapping.someip_instance_id,
         msg.get_method_id(), 'R');
     return publish_toward_iceoryx2(
@@ -277,7 +277,7 @@ someip::rpc::RpcResult Iceoryx2Gateway::rpc_handler_bridge_to_iceoryx2(
     }
 
     auto sample = translator_.someip_to_sample(msg, mapping.someip_instance_id, mapping.mode);
-    std::string io_name = Iceoryx2Translator::build_iceoryx2_service_name(
+    std::string io_name = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
         config_.service_name_prefix, mapping.someip_service_id, mapping.someip_instance_id,
         method_id, 'R');
 
@@ -542,7 +542,7 @@ someip::Result Iceoryx2Gateway::on_someip_message(const someip::Message& msg) {
         return bridge_rpc_someip_to_external(msg, *m);
     }
 
-    std::string name = Iceoryx2Translator::build_iceoryx2_service_name(
+    std::string name = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
         config_.service_name_prefix, m->someip_service_id, m->someip_instance_id,
         msg.get_method_id(), 'R');
     return publish_toward_iceoryx2(

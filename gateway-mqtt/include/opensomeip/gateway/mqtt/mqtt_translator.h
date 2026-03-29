@@ -26,10 +26,22 @@ enum class MqttPayloadEncoding : uint8_t {
 class MqttTranslator : public MessageTranslator {
 public:
     MqttTranslator() = default;
+    explicit MqttTranslator(std::string topic_prefix, std::string vin);
     ~MqttTranslator() override = default;
 
     MqttTranslator(const MqttTranslator&) = delete;
     MqttTranslator& operator=(const MqttTranslator&) = delete;
+
+    std::string build_mqtt_topic(uint16_t service_id, uint16_t instance_id, uint16_t method_id,
+                                 bool is_request) const;
+
+    std::vector<uint8_t> encode_outbound(const someip::Message& msg,
+                                         MqttPayloadEncoding encoding) const;
+
+    someip::Message decode_inbound(const std::vector<uint8_t>& payload,
+                                   MqttPayloadEncoding encoding) const;
+
+    std::vector<uint8_t> build_correlation_data(uint16_t client_id, uint16_t session_id) const;
 
     static std::string build_topic_with_vin(const std::string& topic_prefix,
                                             const std::string& vin,
@@ -67,6 +79,10 @@ public:
                           int default_rpc_qos);
 
     static std::vector<uint8_t> payload_to_json_envelope(const someip::Message& msg);
+
+private:
+    std::string topic_prefix_;
+    std::string vin_;
 };
 
 }  // namespace gateway

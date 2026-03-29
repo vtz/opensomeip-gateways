@@ -9,65 +9,96 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
 namespace opensomeip::gateway {
 
-TEST(MqttTranslatorTest, BuildTopicEvent) {
-    MqttTranslator translator("vehicle", "WBA123");
-    auto topic = translator.build_mqtt_topic(0x1234, 0x0001, 0x8001, false);
-    EXPECT_EQ(topic, "vehicle/WBA123/someip/0x1234/0x0001/event/0x8001");
+TEST(MqttTranslatorTest, BuildTopicWithVin) {
+    auto topic =
+        MqttTranslator::build_topic_with_vin("vehicle", "WBA123", 0x1234, 0x0001, 0x8001);
+    EXPECT_EQ(topic, "vehicle/WBA123/someip/0x1234/0x0001/0x8001");
 }
 
-TEST(MqttTranslatorTest, BuildTopicRequest) {
+TEST(MqttTranslatorTest, BuildTopicWithVinRequestPath) {
+    auto topic =
+        MqttTranslator::build_topic_with_vin("vehicle", "WBA123", 0x2000, 0x0001, 0x0001);
+    EXPECT_EQ(topic, "vehicle/WBA123/someip/0x2000/0x0001/0x0001");
+}
+
+TEST(MqttTranslatorTest, BuildMqttTopicEventAndRequest) {
     MqttTranslator translator("vehicle", "WBA123");
-    auto topic = translator.build_mqtt_topic(0x2000, 0x0001, 0x0001, true);
-    EXPECT_EQ(topic, "vehicle/WBA123/someip/0x2000/0x0001/method/0x0001/request");
+    EXPECT_EQ(translator.build_mqtt_topic(0x1234, 0x0001, 0x8001, false),
+              "vehicle/WBA123/someip/0x1234/0x0001/event/0x8001");
+    EXPECT_EQ(translator.build_mqtt_topic(0x2000, 0x0001, 0x0001, true),
+              "vehicle/WBA123/someip/0x2000/0x0001/method/0x0001/request");
 }
 
 TEST(MqttTranslatorTest, QoSMapping) {
-    EXPECT_EQ(MqttTranslator::default_qos_for_message_type(someip::MessageType::NOTIFICATION), 0);
-    EXPECT_EQ(MqttTranslator::default_qos_for_message_type(someip::MessageType::REQUEST), 1);
-    EXPECT_EQ(MqttTranslator::default_qos_for_message_type(someip::MessageType::RESPONSE), 1);
+    EXPECT_EQ(MqttTranslator::select_qos(true, false, 0, 1), 0);
+    EXPECT_EQ(MqttTranslator::select_qos(false, true, 0, 1), 1);
+    EXPECT_EQ(MqttTranslator::select_qos(false, false, 0, 1), 1);
 }
 
 TEST(MqttTranslatorTest, EncodeOutboundRaw) {
-    MqttTranslator translator("v", "X");
     someip::MessageId msg_id(0x1234, 0x0001);
     someip::RequestId req_id(0x0001, 0x0001);
     someip::Message msg(msg_id, req_id);
     msg.set_payload({0xAA, 0xBB});
 
-    auto encoded = translator.encode_outbound(msg, MqttPayloadEncoding::RAW);
+    auto encoded = MqttTranslator::encode_payload(msg, MqttPayloadEncoding::RAW);
     EXPECT_EQ(encoded, msg.get_payload());
 }
 
 TEST(MqttTranslatorTest, EncodeOutboundJson) {
-    MqttTranslator translator("v", "X");
     someip::MessageId msg_id(0x1234, 0x0001);
     someip::RequestId req_id(0x0001, 0x0001);
     someip::Message msg(msg_id, req_id);
     msg.set_payload({0x01});
 
-    auto encoded = translator.encode_outbound(msg, MqttPayloadEncoding::JSON);
+    auto encoded = MqttTranslator::encode_payload(msg, MqttPayloadEncoding::JSON);
     std::string json_str(encoded.begin(), encoded.end());
     EXPECT_NE(json_str.find("service_id"), std::string::npos);
     EXPECT_NE(json_str.find("payload"), std::string::npos);
 }
 
 TEST(MqttTranslatorTest, EncodeOutboundSomeipFramed) {
-    MqttTranslator translator("v", "X");
     someip::MessageId msg_id(0x1234, 0x0001);
     someip::RequestId req_id(0x0001, 0x0001);
     someip::Message msg(msg_id, req_id);
     msg.set_payload({0x01, 0x02});
 
-    auto encoded = translator.encode_outbound(msg, MqttPayloadEncoding::SOMEIP_FRAMED);
+    auto encoded = MqttTranslator::encode_payload(msg, MqttPayloadEncoding::SOMEIP_FRAMED);
     EXPECT_GE(encoded.size(), someip::Message::get_header_size() + 2);
 }
 
+TEST(MqttTranslatorTest, EncodeOutboundDelegatesToEncodePayload) {
+    someip::MessageId msg_id(0x1234, 0x0001);
+    someip::RequestId req_id(0x0001, 0x0001);
+    someip::Message msg(msg_id, req_id);
+    msg.set_payload({0xDE, 0xAD});
+
+    MqttTranslator translator("vehicle", "WBA123");
+    for (const auto enc : {MqttPayloadEncoding::RAW, MqttPayloadEncoding::JSON,
+                            MqttPayloadEncoding::SOMEIP_FRAMED}) {
+        EXPECT_EQ(translator.encode_outbound(msg, enc),
+                  MqttTranslator::encode_payload(msg, enc));
+    }
+}
+
+TEST(MqttTranslatorTest, DecodeInboundRaw) {
+    MqttTranslator translator("vehicle", "WBA123");
+    const std::vector<uint8_t> body{0x01, 0x02, 0x03};
+    auto decoded = translator.decode_inbound(body, MqttPayloadEncoding::RAW);
+    EXPECT_EQ(decoded.get_payload(), body);
+}
+
 TEST(MqttTranslatorTest, CorrelationData) {
-    MqttTranslator translator("v", "X");
-    auto corr = translator.build_correlation_data(0x00AB, 0x00CD);
-    EXPECT_EQ(corr.size(), 4u);
+    MqttTranslator translator("vehicle", "WBA123");
+    const std::vector<uint8_t> corr =
+        translator.build_correlation_data(0x00AB, 0x00CD);
+    ASSERT_EQ(corr.size(), 4u);
     EXPECT_EQ(corr[0], 0x00);
     EXPECT_EQ(corr[1], 0xAB);
     EXPECT_EQ(corr[2], 0x00);

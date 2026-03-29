@@ -50,16 +50,11 @@ GatewayDirection parse_direction(const std::string& direction) {
     std::string lower = direction;
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
-    if (lower == "someip_to_external" || lower == "someip_to_mqtt" ||
-        lower == "someip_to_grpc" || lower == "someip_to_iceoryx2" ||
-        lower == "someip_to_zenoh" || lower == "someip_to_dbus" ||
-        lower == "someip_to_dds" || lower == "someip_to_ros2") {
+    if (lower == "someip_to_external" || lower.find("someip_to_") == 0) {
         return GatewayDirection::SOMEIP_TO_EXTERNAL;
     }
-    if (lower == "external_to_someip" || lower == "mqtt_to_someip" ||
-        lower == "grpc_to_someip" || lower == "iceoryx2_to_someip" ||
-        lower == "zenoh_to_someip" || lower == "dbus_to_someip" ||
-        lower == "dds_to_someip" || lower == "ros2_to_someip") {
+    if (lower == "external_to_someip" ||
+        (lower.size() > 10 && lower.rfind("_to_someip") == lower.size() - 10)) {
         return GatewayDirection::EXTERNAL_TO_SOMEIP;
     }
     return GatewayDirection::BIDIRECTIONAL;

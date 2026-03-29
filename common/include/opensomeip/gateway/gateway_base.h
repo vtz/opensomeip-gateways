@@ -10,23 +10,27 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
-#include "someip/message.h"
 #include "common/result.h"
+#include "someip/message.h"
+#include "transport/transport.h"
+#include "transport/udp_transport.h"
 
 namespace opensomeip {
 namespace gateway {
 
 struct GatewayStats {
-    uint64_t messages_someip_to_external{0};
-    uint64_t messages_external_to_someip{0};
-    uint64_t translation_errors{0};
-    uint64_t bytes_someip_to_external{0};
-    uint64_t bytes_external_to_someip{0};
+    std::atomic<uint64_t> messages_someip_to_external{0};
+    std::atomic<uint64_t> messages_external_to_someip{0};
+    std::atomic<uint64_t> translation_errors{0};
+    std::atomic<uint64_t> bytes_someip_to_external{0};
+    std::atomic<uint64_t> bytes_external_to_someip{0};
     std::chrono::steady_clock::time_point started_at{};
 
     std::chrono::milliseconds uptime() const {
@@ -35,6 +39,29 @@ struct GatewayStats {
         }
         return std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - started_at);
+    }
+
+    GatewayStats() = default;
+
+    GatewayStats(const GatewayStats& other)
+        : messages_someip_to_external(other.messages_someip_to_external.load()),
+          messages_external_to_someip(other.messages_external_to_someip.load()),
+          translation_errors(other.translation_errors.load()),
+          bytes_someip_to_external(other.bytes_someip_to_external.load()),
+          bytes_external_to_someip(other.bytes_external_to_someip.load()),
+          started_at(other.started_at) {
+    }
+
+    GatewayStats& operator=(const GatewayStats& other) {
+        if (this != &other) {
+            messages_someip_to_external.store(other.messages_someip_to_external.load());
+            messages_external_to_someip.store(other.messages_external_to_someip.load());
+            translation_errors.store(other.translation_errors.load());
+            bytes_someip_to_external.store(other.bytes_someip_to_external.load());
+            bytes_external_to_someip.store(other.bytes_external_to_someip.load());
+            started_at = other.started_at;
+        }
+        return *this;
     }
 };
 
@@ -65,6 +92,14 @@ using ExternalMessageCallback =
     std::function<void(uint16_t service_id, uint16_t method_id,
                        const std::vector<uint8_t>& payload)>;
 
+using SomeipOutboundSink = std::function<void(const someip::Message&)>;
+
+inline std::string format_hex16(uint16_t id) {
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "0x%04x", static_cast<unsigned>(id));
+    return std::string(buf);
+}
+
 class IGateway {
 public:
     virtual ~IGateway() = default;
@@ -78,6 +113,35 @@ public:
     virtual std::string get_name() const = 0;
     virtual std::string get_protocol() const = 0;
     virtual GatewayStats get_stats() const = 0;
+};
+
+/**
+ * Reusable UDP bridge listener that forwards received SOME/IP messages
+ * to an IGateway instance. Eliminates identical boilerplate across gateways.
+ */
+class GatewayUdpBridgeListener : public someip::transport::ITransportListener {
+public:
+    explicit GatewayUdpBridgeListener(IGateway& gw) : gw_(gw) {
+    }
+
+    void on_message_received(someip::MessagePtr message,
+                             const someip::transport::Endpoint&) override {
+        if (message) {
+            gw_.on_someip_message(*message);
+        }
+    }
+
+    void on_connection_lost(const someip::transport::Endpoint&) override {
+    }
+
+    void on_connection_established(const someip::transport::Endpoint&) override {
+    }
+
+    void on_error(someip::Result) override {
+    }
+
+private:
+    IGateway& gw_;
 };
 
 class GatewayBase : public IGateway {
@@ -96,7 +160,7 @@ public:
     GatewayStats get_stats() const override;
 
     void add_service_mapping(const ServiceMapping& mapping);
-    const std::vector<ServiceMapping>& get_service_mappings() const;
+    std::vector<ServiceMapping> get_service_mappings() const;
 
     void set_external_message_callback(ExternalMessageCallback callback);
 
@@ -113,16 +177,16 @@ protected:
     bool should_forward_to_external(const ServiceMapping& mapping) const;
     bool should_forward_to_someip(const ServiceMapping& mapping) const;
 
+    mutable std::mutex callback_mutex_;
     ExternalMessageCallback external_message_callback_;
 
 private:
     std::string name_;
     std::string protocol_;
     std::atomic<bool> running_{false};
-    mutable std::mutex stats_mutex_;
     GatewayStats stats_;
-    std::vector<ServiceMapping> service_mappings_;
     mutable std::mutex mappings_mutex_;
+    std::vector<ServiceMapping> service_mappings_;
 };
 
 }  // namespace gateway

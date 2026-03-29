@@ -7,9 +7,59 @@
 #include "opensomeip/gateway/mqtt/mqtt_translator.h"
 
 #include <sstream>
+#include <utility>
 
 namespace opensomeip {
 namespace gateway {
+
+MqttTranslator::MqttTranslator(std::string topic_prefix, std::string vin)
+    : topic_prefix_(std::move(topic_prefix)), vin_(std::move(vin)) {
+}
+
+std::string MqttTranslator::build_mqtt_topic(uint16_t service_id, uint16_t instance_id,
+                                             uint16_t method_id, bool is_request) const {
+    std::ostringstream topic;
+    topic << topic_prefix_ << "/" << vin_ << "/someip/" << format_service_id(service_id) << "/"
+          << format_service_id(instance_id) << "/";
+    if (is_request) {
+        topic << "method/" << format_service_id(method_id) << "/request";
+    } else {
+        topic << "event/" << format_service_id(method_id);
+    }
+    return topic.str();
+}
+
+std::vector<uint8_t> MqttTranslator::encode_outbound(const someip::Message& msg,
+                                                     MqttPayloadEncoding encoding) const {
+    return encode_payload(msg, encoding);
+}
+
+someip::Message MqttTranslator::decode_inbound(const std::vector<uint8_t>& payload,
+                                               MqttPayloadEncoding encoding) const {
+    if (encoding == MqttPayloadEncoding::SOMEIP_FRAMED) {
+        someip::Message m;
+        if (m.deserialize(payload, false)) {
+            return m;
+        }
+        return someip::Message();
+    }
+    std::vector<uint8_t> inner = decode_payload(payload, encoding);
+    someip::MessageId mid(0x0000, 0x0000);
+    someip::RequestId rid(0x0000, 0x0001);
+    someip::Message msg(mid, rid, someip::MessageType::REQUEST);
+    msg.set_payload(std::move(inner));
+    return msg;
+}
+
+std::vector<uint8_t> MqttTranslator::build_correlation_data(uint16_t client_id,
+                                                             uint16_t session_id) const {
+    return {
+        static_cast<uint8_t>((client_id >> 8) & 0xFF),
+        static_cast<uint8_t>(client_id & 0xFF),
+        static_cast<uint8_t>((session_id >> 8) & 0xFF),
+        static_cast<uint8_t>(session_id & 0xFF),
+    };
+}
 
 std::string MqttTranslator::build_topic_with_vin(const std::string& topic_prefix,
                                                  const std::string& vin,
@@ -17,7 +67,7 @@ std::string MqttTranslator::build_topic_with_vin(const std::string& topic_prefix
                                                  uint16_t instance_id,
                                                  uint16_t method_or_event_id) {
     std::ostringstream topic;
-    topic << topic_prefix << "/" << vin << "/" << format_service_id(service_id) << "/"
+    topic << topic_prefix << "/" << vin << "/someip/" << format_service_id(service_id) << "/"
           << format_service_id(instance_id) << "/" << format_service_id(method_or_event_id);
     return topic.str();
 }
