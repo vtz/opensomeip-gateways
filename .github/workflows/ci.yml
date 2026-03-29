@@ -44,6 +44,9 @@ jobs:
           repository: vtz/opensomeip
           path: some-ip
 
+      - name: Symlink opensomeip for CMake
+        run: ln -sfn "${{ github.workspace }}/some-ip" ../some-ip
+
       - name: Configure
         run: >
           cmake -B build -S .
@@ -57,14 +60,6 @@ jobs:
           -DBUILD_GATEWAY_GRPC=ON
           -DBUILD_GATEWAY_ROS2=ON
           -DBUILD_GATEWAY_DBUS=ON
-        env:
-          OPENSOMEIP_ROOT: ${{ github.workspace }}/some-ip
-
-      - name: Patch opensomeip path
-        run: |
-          if [ ! -d "../some-ip" ]; then
-            ln -s "${{ github.workspace }}/some-ip" ../some-ip
-          fi
 
       - name: Build
         run: cmake --build build -j$(nproc)
@@ -97,9 +92,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:42
-      credentials:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -126,8 +118,8 @@ jobs:
           repository: vtz/opensomeip
           path: some-ip
 
-      - name: Symlink opensomeip
-        run: ln -s "${{ github.workspace }}/some-ip" ../some-ip || true
+      - name: Symlink opensomeip for CMake
+        run: ln -sfn "$GITHUB_WORKSPACE/some-ip" ../some-ip || true
 
       - name: Configure
         run: >
@@ -149,8 +141,8 @@ jobs:
       - name: Test
         working-directory: build
         run: |
-          mkdir -p "${{ github.workspace }}/gtest_results"
-          export GTEST_OUTPUT="xml:${{ github.workspace }}/gtest_results/"
+          mkdir -p "$GITHUB_WORKSPACE/gtest_results"
+          export GTEST_OUTPUT="xml:$GITHUB_WORKSPACE/gtest_results/"
           ctest --output-on-failure --timeout 30 --no-tests=error --output-junit junit_results.xml
 
       - name: Upload test results
@@ -174,8 +166,8 @@ jobs:
           repository: vtz/opensomeip
           path: some-ip
 
-      - name: Symlink opensomeip
-        run: ln -s "${{ github.workspace }}/some-ip" ../some-ip || true
+      - name: Symlink opensomeip for CMake
+        run: ln -sfn "${{ github.workspace }}/some-ip" ../some-ip
 
       - name: Install coverage tools
         run: |
@@ -271,8 +263,8 @@ jobs:
           repository: vtz/opensomeip
           path: some-ip
 
-      - name: Symlink opensomeip
-        run: ln -s "${{ github.workspace }}/some-ip" ../some-ip || true
+      - name: Symlink opensomeip for CMake
+        run: ln -sfn "${{ github.workspace }}/some-ip" ../some-ip
 
       - name: Configure (Debug + Sanitizers)
         run: >
@@ -321,8 +313,8 @@ jobs:
           repository: vtz/opensomeip
           path: some-ip
 
-      - name: Symlink opensomeip
-        run: ln -s "${{ github.workspace }}/some-ip" ../some-ip || true
+      - name: Symlink opensomeip for CMake
+        run: ln -sfn "${{ github.workspace }}/some-ip" ../some-ip
 
       - name: Configure
         run: >
