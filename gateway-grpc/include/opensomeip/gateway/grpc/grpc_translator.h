@@ -7,6 +7,7 @@
 #ifndef OPENSOMEIP_GATEWAY_GRPC_GRPC_TRANSLATOR_H
 #define OPENSOMEIP_GATEWAY_GRPC_GRPC_TRANSLATOR_H
 
+#include <grpcpp/support/status.h>
 #include <grpcpp/support/status_code_enum.h>
 
 #include <cstdint>
@@ -21,6 +22,10 @@ namespace opensomeip {
 namespace gateway {
 namespace grpc {
 
+/**
+ * @brief Bidirectional mapping between SOME/IP ReturnCode / RpcResult and gRPC status semantics,
+ *        plus conversion between @c someip::Message and protobuf envelopes.
+ */
 class GrpcTranslator {
 public:
     GrpcTranslator() = default;

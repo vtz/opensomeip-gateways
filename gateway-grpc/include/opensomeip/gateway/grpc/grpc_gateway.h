@@ -12,12 +12,16 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <string>
 #include <vector>
+
+#include "gateway.pb.h"
 
 #include "e2e/e2e_protection.h"
 #include "events/event_subscriber.h"
@@ -42,7 +46,7 @@ class SomeIpGatewayGrpcService;
  * @brief Runtime configuration for the dual-role gRPC gateway (vehicle/edge server + cloud client).
  */
 struct GrpcConfig : GrpcConfigCore {
-    grpc::ChannelArguments default_channel_args{};
+    ::grpc::ChannelArguments default_channel_args{};
 };
 
 /**
@@ -76,27 +80,50 @@ public:
     someip::events::EventSubscriber& event_subscriber() { return *event_subscriber_; }
     const someip::events::EventSubscriber& event_subscriber() const { return *event_subscriber_; }
 
-    /**
-     * @brief Register an RpcServer instance for a vehicle-side service (e.g. digital twin radar).
-     *        The gateway does not take ownership; lifetime must exceed @c GrpcGateway.
-     */
     void register_vehicle_rpc_server(uint16_t service_id, someip::rpc::RpcServer& server);
 
     someip::sd::SdClient* sd_client() { return sd_client_.get(); }
     someip::sd::SdServer* sd_server() { return sd_server_.get(); }
 
-    std::shared_ptr<grpc::Channel> channel_for_target(const std::string& target_name) const;
+    std::shared_ptr<::grpc::Channel> channel_for_target(const std::string& target_name) const;
 
 private:
     friend class detail::SomeIpGatewayGrpcService;
 
+    struct EventStreamKey {
+        uint32_t service_id;
+        uint32_t instance_id;
+        uint32_t event_group_id;
+        bool operator<(const EventStreamKey& o) const {
+            if (service_id != o.service_id) return service_id < o.service_id;
+            if (instance_id != o.instance_id) return instance_id < o.instance_id;
+            return event_group_id < o.event_group_id;
+        }
+    };
+
+    struct EventStreamSink {
+        std::mutex mu;
+        std::condition_variable cv;
+        std::atomic<bool> closed{false};
+        std::queue<::opensomeip::gateway::grpc::v1::EventFrame> pending;
+    };
+
+    void register_event_stream(const EventStreamKey& key,
+                               const std::shared_ptr<EventStreamSink>& sink);
+    void unregister_event_stream(const EventStreamKey& key,
+                                 const std::shared_ptr<EventStreamSink>& sink);
+    void deliver_event_frame(const std::shared_ptr<EventStreamSink>& sink,
+                             const ::opensomeip::gateway::grpc::v1::EventFrame& frame);
+    void broadcast_notification(uint32_t service_id, uint32_t instance_id,
+                                const ::opensomeip::gateway::grpc::v1::EventFrame& frame);
+
     std::string read_file_or_empty(const std::string& path) const;
-    std::shared_ptr<grpc::ServerCredentials> build_server_credentials() const;
-    std::shared_ptr<grpc::ChannelCredentials> build_channel_credentials(
+    std::shared_ptr<::grpc::ServerCredentials> build_server_credentials() const;
+    std::shared_ptr<::grpc::ChannelCredentials> build_channel_credentials(
         const GrpcTlsClientOptions& tls) const;
 
     mutable std::mutex channels_mu_;
-    mutable std::map<std::string, std::shared_ptr<grpc::Channel>> channels_;
+    mutable std::map<std::string, std::shared_ptr<::grpc::Channel>> channels_;
 
     GrpcConfig config_;
     GrpcTranslator translator_;
@@ -111,9 +138,10 @@ private:
     std::map<uint16_t, someip::rpc::RpcServer*> vehicle_rpc_servers_;
 
     std::unique_ptr<detail::SomeIpGatewayGrpcService> grpc_service_;
-    std::unique_ptr<grpc::Server> grpc_server_;
+    std::unique_ptr<::grpc::Server> grpc_server_;
 
     std::mutex stream_mu_;
+    std::multimap<EventStreamKey, std::weak_ptr<EventStreamSink>> stream_subscribers_;
 };
 
 }  // namespace grpc
