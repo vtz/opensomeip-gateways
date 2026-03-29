@@ -309,12 +309,9 @@ void MqttGateway::handle_inbound_mqtt_command(
 
 const ServiceMapping* MqttGateway::find_mapping_by_topic_prefix(
     const std::string& topic) const {
-    for (const auto& m : get_service_mappings()) {
-        if (topic.find(m.external_identifier) != std::string::npos) {
-            return &m;
-        }
-    }
-    return nullptr;
+    return find_mapping_if([&topic](const ServiceMapping& m) {
+        return topic.find(m.external_identifier) != std::string::npos;
+    });
 }
 
 }  // namespace gateway

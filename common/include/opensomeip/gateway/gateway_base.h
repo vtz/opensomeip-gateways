@@ -174,6 +174,17 @@ protected:
     const ServiceMapping* find_mapping_for_service(uint16_t service_id,
                                                    uint16_t instance_id) const;
 
+    template <typename Predicate>
+    const ServiceMapping* find_mapping_if(Predicate pred) const {
+        std::lock_guard<std::mutex> lock(mappings_mutex_);
+        for (const auto& m : service_mappings_) {
+            if (pred(m)) {
+                return &m;
+            }
+        }
+        return nullptr;
+    }
+
     bool should_forward_to_external(const ServiceMapping& mapping) const;
     bool should_forward_to_someip(const ServiceMapping& mapping) const;
 

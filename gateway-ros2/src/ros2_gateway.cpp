@@ -363,17 +363,17 @@ std::string Ros2Gateway::route_someip_to_ros2_topic(const someip::Message& msg,
 }
 
 const ServiceMapping* Ros2Gateway::find_mapping_by_ros_topic(const std::string& topic) const {
-    for (const auto& m : get_service_mappings()) {
+    return find_mapping_if([&topic](const ServiceMapping& m) {
         if (m.external_identifier == topic) {
-            return &m;
+            return true;
         }
         if (!m.external_identifier.empty() && topic.size() >= m.external_identifier.size() &&
             topic.compare(0, m.external_identifier.size(), m.external_identifier) == 0 &&
             (topic.size() == m.external_identifier.size() || topic[m.external_identifier.size()] == '/')) {
-            return &m;
+            return true;
         }
-    }
-    return nullptr;
+        return false;
+    });
 }
 
 uint16_t Ros2Gateway::command_method_for_mapping(const ServiceMapping& mapping) const {
