@@ -5,7 +5,7 @@
  ********************************************************************************/
 
 #ifndef OPENSOMEIP_GATEWAY_DDS_DDS_TRANSLATOR_H
-#define OPENSOMEIP_GATEWAY_DDS_DDS_DDS_TRANSLATOR_H
+#define OPENSOMEIP_GATEWAY_DDS_DDS_TRANSLATOR_H
 
 #include <chrono>
 #include <cstdint>
