@@ -20,21 +20,21 @@ Modern vehicle architectures need to bridge in-vehicle SOME/IP networks with clo
 
 ```
                            ┌─────────────────┐
-                           │   opensomeip     │
-                           │   (core stack)   │
-                           └────────┬────────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    │               │               │
+                           │   opensomeip    │
+                           │   (core stack)  │
+                           └───────┬─────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    │              │              │
               ┌─────▼─────┐  ┌─────▼─────┐  ┌─────▼─────┐
-              │  iceoryx2  │  │   MQTT    │  │   gRPC    │  ...
-              │  gateway   │  │  gateway  │  │  gateway  │
+              │  iceoryx2 │  │   MQTT    │  │   gRPC    │  ...
+              │  gateway  │  │  gateway  │  │  gateway  │
               └─────┬─────┘  └─────┬─────┘  └─────┬─────┘
                     │              │              │
-              ┌─────▼─────┐  ┌────▼──────┐  ┌────▼──────┐
-              │ Zero-copy  │  │  Cloud    │  │ Backend   │
-              │ local IPC  │  │  Broker   │  │ Services  │
-              └───────────┘  └──────────┘  └──────────┘
+              ┌─────▼─────┐  ┌─────▼─────┐  ┌─────▼─────┐
+              │ Zero-copy │  │  Cloud    │  │ Backend   │
+              │ local IPC │  │  Broker   │  │ Services  │
+              └───────────┘  └───────────┘  └───────────┘
 ```
 
 ### Design Principles
@@ -107,22 +107,22 @@ Every gateway follows the same architectural pattern:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                   Gateway Process                       │
+│                   Gateway Process                      │
 │                                                        │
 │  ┌─────────────────┐         ┌──────────────────────┐  │
-│  │  SOME/IP Side    │         │  External Protocol    │  │
-│  │  (opensomeip)    │         │  Side                 │  │
-│  │  - Transport     │         │  - Protocol client    │  │
-│  │  - SD            │◄──────►│  - Pub/sub or RPC     │  │
-│  │  - RPC           │ Trans-  │  - Discovery          │  │
-│  │  - Events        │ lation  │  - Security           │  │
+│  │  SOME/IP Side   │         │  External Protocol   │  │
+│  │  (opensomeip)   │         │  Side                │  │
+│  │  - Transport    │         │  - Protocol client   │  │
+│  │  - SD           │◄───────►│  - Pub/sub or RPC    │  │
+│  │  - RPC          │ Trans-  │  - Discovery         │  │
+│  │  - Events       │ lation  │  - Security          │  │
 │  └─────────────────┘ Layer   └──────────────────────┘  │
-│                        ▲                                │
-│                        │                                │
-│                ┌───────┴───────┐                        │
-│                │ Configuration │                        │
-│                │ (YAML)        │                        │
-│                └───────────────┘                        │
+│                        ▲                               │
+│                        │                               │
+│                ┌───────┴───────┐                       │
+│                │ Configuration │                       │
+│                │ (YAML)        │                       │
+│                └───────────────┘                       │
 └────────────────────────────────────────────────────────┘
 ```
 
