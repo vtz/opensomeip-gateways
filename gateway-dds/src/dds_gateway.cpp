@@ -204,7 +204,7 @@ private:
         readers_.clear();
         topics_.clear();
         if (participant_ > 0) {
-            dds_delete_participant(participant_);
+            dds_delete(participant_);
             participant_ = 0;
         }
     }

@@ -50,7 +50,7 @@ TEST(GrpcConfigTest, FullGrpcConfigInheritsCoreDefaults) {
 }
 
 TEST(GrpcTranslatorTest, ReturnCodeToGrpcStatusCode) {
-    using SC = grpc::StatusCode;
+    using SC = ::grpc::StatusCode;
     EXPECT_EQ(GrpcTranslator::return_code_to_grpc_status_code(someip::ReturnCode::E_OK), SC::OK);
     EXPECT_EQ(GrpcTranslator::return_code_to_grpc_status_code(someip::ReturnCode::E_NOT_OK),
               SC::INTERNAL);
@@ -65,7 +65,7 @@ TEST(GrpcTranslatorTest, ReturnCodeToGrpcStatusCode) {
 }
 
 TEST(GrpcTranslatorTest, GrpcStatusCodeToReturnCode) {
-    using SC = grpc::StatusCode;
+    using SC = ::grpc::StatusCode;
     EXPECT_EQ(GrpcTranslator::grpc_status_code_to_return_code(SC::OK), someip::ReturnCode::E_OK);
     EXPECT_EQ(GrpcTranslator::grpc_status_code_to_return_code(SC::INTERNAL),
               someip::ReturnCode::E_NOT_OK);
@@ -77,7 +77,7 @@ TEST(GrpcTranslatorTest, GrpcStatusCodeToReturnCode) {
               someip::ReturnCode::E_NOT_REACHABLE);
     EXPECT_EQ(GrpcTranslator::grpc_status_code_to_return_code(SC::DEADLINE_EXCEEDED),
               someip::ReturnCode::E_TIMEOUT);
-    EXPECT_EQ(GrpcTranslator::grpc_status_code_to_return_code(static_cast<grpc::StatusCode>(999)),
+    EXPECT_EQ(GrpcTranslator::grpc_status_code_to_return_code(static_cast<::grpc::StatusCode>(999)),
               someip::ReturnCode::E_NOT_OK);
 }
 

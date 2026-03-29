@@ -78,10 +78,10 @@ target_link_libraries(opensomeip-gateway-grpc
 target_compile_definitions(opensomeip-gateway-grpc PUBLIC HAVE_GRPC=1)
 
 if(_grpc_via_pkgconfig)
-    target_include_directories(opensomeip-gateway-grpc PRIVATE ${GRPCPP_INCLUDE_DIRS})
-    target_link_libraries(opensomeip-gateway-grpc PRIVATE ${GRPCPP_LIBRARIES} protobuf::libprotobuf)
+    target_include_directories(opensomeip-gateway-grpc PUBLIC ${GRPCPP_INCLUDE_DIRS})
+    target_link_libraries(opensomeip-gateway-grpc PUBLIC ${GRPCPP_LIBRARIES} protobuf::libprotobuf)
 else()
-    target_link_libraries(opensomeip-gateway-grpc PRIVATE gRPC::grpc++ protobuf::libprotobuf)
+    target_link_libraries(opensomeip-gateway-grpc PUBLIC gRPC::grpc++ protobuf::libprotobuf)
 endif()
 
 if(BUILD_TESTS)
