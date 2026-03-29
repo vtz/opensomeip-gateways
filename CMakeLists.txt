@@ -8,7 +8,7 @@ string(STRIP "${PROJECT_VERSION_RAW}" PROJECT_VERSION)
 
 project(opensomeip-gateways
     VERSION ${PROJECT_VERSION}
-    LANGUAGES CXX
+    LANGUAGES C CXX
     DESCRIPTION "Protocol gateways for OpenSOME/IP"
 )
 

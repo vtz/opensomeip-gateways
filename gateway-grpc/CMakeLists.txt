@@ -1,10 +1,16 @@
 # Copyright (c) 2025 Vinicius Tadeu Zein
 # SPDX-License-Identifier: Apache-2.0
 
-find_package(Protobuf QUIET)
 find_package(gRPC QUIET CONFIG)
 
-if(NOT gRPC_FOUND)
+if(gRPC_FOUND)
+    if(NOT TARGET protobuf::libprotobuf)
+        find_package(Protobuf QUIET)
+    else()
+        set(Protobuf_FOUND TRUE)
+    endif()
+else()
+    find_package(Protobuf QUIET)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(GRPCPP grpc++)
@@ -24,13 +30,45 @@ if(NOT gRPC_FOUND OR NOT Protobuf_FOUND)
     )
 endif()
 
+# ── Generate protobuf / gRPC stubs from gateway.proto ────────────────────────
+
+set(_proto_file "${CMAKE_CURRENT_SOURCE_DIR}/protos/gateway.proto")
+set(_proto_gen_dir "${CMAKE_CURRENT_BINARY_DIR}/proto_gen")
+file(MAKE_DIRECTORY ${_proto_gen_dir})
+
+find_program(_PROTOC protoc REQUIRED)
+find_program(_GRPC_CPP_PLUGIN grpc_cpp_plugin REQUIRED)
+
+set(_pb_cc   "${_proto_gen_dir}/gateway.pb.cc")
+set(_pb_h    "${_proto_gen_dir}/gateway.pb.h")
+set(_grpc_cc "${_proto_gen_dir}/gateway.grpc.pb.cc")
+set(_grpc_h  "${_proto_gen_dir}/gateway.grpc.pb.h")
+
+add_custom_command(
+    OUTPUT ${_pb_cc} ${_pb_h} ${_grpc_cc} ${_grpc_h}
+    COMMAND ${_PROTOC}
+        --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/protos
+        --cpp_out=${_proto_gen_dir}
+        --grpc_out=${_proto_gen_dir}
+        --plugin=protoc-gen-grpc=${_GRPC_CPP_PLUGIN}
+        ${_proto_file}
+    DEPENDS ${_proto_file}
+    COMMENT "Generating protobuf/gRPC stubs for gateway.proto"
+)
+
+# ── Library ──────────────────────────────────────────────────────────────────
+
 add_library(opensomeip-gateway-grpc
     src/grpc_gateway.cpp
     src/grpc_translator.cpp
+    ${_pb_cc}
+    ${_grpc_cc}
 )
 
 target_include_directories(opensomeip-gateway-grpc
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${_proto_gen_dir}
 )
 
 target_link_libraries(opensomeip-gateway-grpc
