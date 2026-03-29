@@ -1,6 +1,13 @@
 /********************************************************************************
  * Copyright (c) 2025 Vinicius Tadeu Zein
  *
+ * See the NOTICE file(s) distributed with this work for additional
+ * information regarding copyright ownership.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Apache License Version 2.0 which is available at
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
  * SPDX-License-Identifier: Apache-2.0
  ********************************************************************************/
 
@@ -11,8 +18,14 @@
 #include <cstring>
 #include <iostream>
 
+#include "events/event_types.h"
+#include "someip/types.h"
+
 namespace opensomeip {
 namespace gateway {
+
+/** Complete type for @ref MqttGateway::paho_; kept here so @c unique_ptr is well-formed. */
+struct MqttGatewayPahoContext {};
 
 // ── OfflineMqttRingBuffer ───────────────────────────────────────────────────
 
@@ -53,33 +66,6 @@ void OfflineMqttRingBuffer::clear() {
     queue_.clear();
 }
 
-// ── UdpBridgeListener ───────────────────────────────────────────────────────
-
-class MqttGateway::UdpBridgeListener : public someip::transport::ITransportListener {
-public:
-    explicit UdpBridgeListener(MqttGateway& gateway) : gateway_(gateway) {
-    }
-
-    void on_message_received(someip::MessagePtr message,
-                             const someip::transport::Endpoint&) override {
-        if (message) {
-            gateway_.on_someip_message(*message);
-        }
-    }
-
-    void on_connection_lost(const someip::transport::Endpoint&) override {
-    }
-
-    void on_connection_established(const someip::transport::Endpoint&) override {
-    }
-
-    void on_error(someip::Result) override {
-    }
-
-private:
-    MqttGateway& gateway_;
-};
-
 // ── MqttGateway ─────────────────────────────────────────────────────────────
 
 MqttGateway::MqttGateway(MqttConfig mqtt_config)
@@ -105,7 +91,7 @@ void MqttGateway::enable_someip_udp_bridge(
     const someip::transport::Endpoint& bind_ep,
     const someip::transport::UdpTransportConfig& cfg) {
     udp_transport_ = std::make_unique<someip::transport::UdpTransport>(bind_ep, cfg);
-    udp_listener_ = std::make_unique<UdpBridgeListener>(*this);
+    udp_listener_ = std::make_unique<GatewayUdpBridgeListener>(*this);
     udp_transport_->set_listener(udp_listener_.get());
 }
 
@@ -143,8 +129,12 @@ bool MqttGateway::subscribe_someip_eventgroup(uint16_t service_id, uint16_t inst
 
     return event_subscriber_->subscribe_eventgroup(
         service_id, instance_id, eventgroup_id,
-        [this](const someip::Message& notification) {
-            on_someip_message(notification);
+        [this](const someip::events::EventNotification& n) {
+            someip::MessageId msg_id(n.service_id, n.event_id);
+            someip::RequestId req_id(n.client_id, n.session_id);
+            someip::Message msg(msg_id, req_id, someip::MessageType::NOTIFICATION);
+            msg.set_payload(n.event_data);
+            on_someip_message(msg);
         });
 }
 

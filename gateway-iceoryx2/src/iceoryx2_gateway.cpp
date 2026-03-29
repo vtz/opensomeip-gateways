@@ -1,5 +1,5 @@
 /********************************************************************************
- * Copyright (c) 2025 Vinicius Tadeu Zein
+ * Copyright (c) 2026 Vinicius Tadeu Zein
  *
  * SPDX-License-Identifier: Apache-2.0
  ********************************************************************************/
@@ -12,15 +12,14 @@
 #include "sd/sd_types.h"
 #include "someip/types.h"
 
-#include <algorithm>
-#include <chrono>
-#include <condition_variable>
-#include <iomanip>
-#include <sstream>
+#include <deque>
+#include <map>
+#include <set>
+#include <tuple>
+#include <utility>
 
 #ifdef OPENSOMEIP_GATEWAY_HAS_ICEORYX2
 // Example: #include <iox2/service_builder.hpp>
-// Use iox2::ServiceBuilder, publishers/subscribers, or client/server ports here.
 #endif
 
 namespace opensomeip {
@@ -29,45 +28,33 @@ namespace iceoryx2 {
 
 namespace {
 
-struct Iceoryx2PendingRpc {
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool done{false};
-    std::vector<uint8_t> payload;
-    someip::rpc::RpcResult result{someip::rpc::RpcResult::INTERNAL_ERROR};
-};
-
-class UdpBridgeListener : public someip::transport::ITransportListener {
-public:
-    explicit UdpBridgeListener(Iceoryx2Gateway* gw) : gw_(gw) {}
-
-    void on_message_received(someip::MessagePtr message,
-                             const someip::transport::Endpoint&) override {
-        if (gw_ != nullptr && message) {
-            (void)gw_->on_someip_message(*message);
-        }
-    }
-
-    void on_connection_lost(const someip::transport::Endpoint&) override {}
-    void on_connection_established(const someip::transport::Endpoint&) override {}
-    void on_error(someip::Result) override {}
-
-private:
-    Iceoryx2Gateway* gw_;
-};
+/** Cleared at each start() to avoid duplicate eventgroup subscriptions across mappings. */
+std::set<std::tuple<uint16_t, uint16_t, uint16_t>> g_eventgroup_subscribed;
 
 }  // namespace
 
+class Iceoryx2InprocessBus {
+public:
+    void push(const std::string& name, const std::vector<uint8_t>& sample) {
+        std::lock_guard<std::mutex> lk(mutex_);
+        while (queue_.size() >= kMaxDepth) {
+            queue_.pop_front();
+        }
+        queue_.push_back({name, sample});
+    }
+
+private:
+    static constexpr size_t kMaxDepth = 1024;
+    std::mutex mutex_;
+    std::deque<std::pair<std::string, std::vector<uint8_t>>> queue_;
+};
+
 Iceoryx2Gateway::Iceoryx2Gateway(Iceoryx2Config config)
-    : GatewayBase(config.gateway_name, "iceoryx2"), config_(std::move(config)) {}
+    : GatewayBase(config.gateway_name, "iceoryx2"), config_(std::move(config)) {
+}
 
 Iceoryx2Gateway::~Iceoryx2Gateway() {
     (void)stop();
-}
-
-void Iceoryx2Gateway::set_someip_outbound_sink(SomeipOutboundSink sink) {
-    std::lock_guard<std::mutex> lk(sink_mutex_);
-    someip_outbound_sink_ = std::move(sink);
 }
 
 void Iceoryx2Gateway::set_iceoryx2_outbound_hook(Iceoryx2OutboundHook hook) {
@@ -75,45 +62,9 @@ void Iceoryx2Gateway::set_iceoryx2_outbound_hook(Iceoryx2OutboundHook hook) {
     outbound_hook_ = std::move(hook);
 }
 
-const ServiceMapping* Iceoryx2Gateway::resolve_mapping(const someip::Message& msg) const {
-    const ServiceMapping* m =
-        find_mapping_for_service(msg.get_service_id(), config_.default_someip_instance_id);
-    if (m != nullptr) {
-        return m;
-    }
-    for (const auto& sm : get_service_mappings()) {
-        if (sm.someip_service_id == msg.get_service_id()) {
-            return &sm;
-        }
-    }
-    return nullptr;
-}
-
-size_t Iceoryx2Gateway::simulated_outbound_depth() const {
-    std::lock_guard<std::mutex> lk(simulated_out_mutex_);
-    return simulated_outbound_.size();
-}
-
-bool Iceoryx2Gateway::pop_simulated_outbound(std::string* iceoryx2_name,
-                                             std::vector<uint8_t>* sample) {
-    std::lock_guard<std::mutex> lk(simulated_out_mutex_);
-    if (simulated_outbound_.empty()) {
-        return false;
-    }
-    auto front = std::move(simulated_outbound_.front());
-    simulated_outbound_.pop_front();
-    if (iceoryx2_name != nullptr) {
-        *iceoryx2_name = std::move(front.first);
-    }
-    if (sample != nullptr) {
-        *sample = std::move(front.second);
-    }
-    return true;
-}
-
 someip::Result Iceoryx2Gateway::publish_toward_iceoryx2(const std::string& iceoryx2_name,
-                                                       const std::vector<uint8_t>& sample,
-                                                       const ServiceMapping* mapping) {
+                                                        const std::vector<uint8_t>& sample,
+                                                        const ServiceMapping* mapping) {
     if (mapping != nullptr && should_forward_to_external(*mapping)) {
         record_someip_to_external(sample.size());
     } else if (mapping == nullptr) {
@@ -127,59 +78,24 @@ someip::Result Iceoryx2Gateway::publish_toward_iceoryx2(const std::string& iceor
         }
     }
 
-    if (config_.use_inprocess_shm_simulation) {
-        std::lock_guard<std::mutex> lk(simulated_out_mutex_);
-        while (simulated_outbound_.size() >= config_.simulated_outbound_queue_cap) {
-            simulated_outbound_.pop_front();
-        }
-        simulated_outbound_.push_back({iceoryx2_name, sample});
+    if (config_.use_inprocess_shm_simulation && inprocess_bus_ != nullptr) {
+        inprocess_bus_->push(iceoryx2_name, sample);
     }
 
     return someip::Result::SUCCESS;
-}
-
-void Iceoryx2Gateway::complete_pending_rpc(const std::string& correlation_id,
-                                           const std::vector<uint8_t>& response_payload,
-                                           someip::rpc::RpcResult rpc_result) {
-    if (correlation_id.empty()) {
-        return;
-    }
-    std::shared_ptr<Iceoryx2PendingRpc> slot;
-    {
-        std::lock_guard<std::mutex> g(pending_rpc_mutex_);
-        auto it = pending_by_correlation_.find(correlation_id);
-        if (it == pending_by_correlation_.end()) {
-            return;
-        }
-        slot = it->second;
-    }
-    {
-        std::lock_guard<std::mutex> lk(slot->mutex);
-        slot->payload = response_payload;
-        slot->result = rpc_result;
-        slot->done = true;
-    }
-    slot->cv.notify_all();
 }
 
 void Iceoryx2Gateway::handle_incoming_envelope(const Iceoryx2Envelope& env,
                                                const std::string& iceoryx2_name) {
     const ServiceMapping* mapping = find_mapping_for_service(env.service_id, env.instance_id);
     if (mapping == nullptr) {
-        for (const auto& sm : get_service_mappings()) {
+        const std::vector<ServiceMapping> mappings = get_service_mappings();
+        for (const auto& sm : mappings) {
             if (sm.someip_service_id == env.service_id) {
-                mapping = &sm;
+                mapping = find_mapping_for_service(env.service_id, sm.someip_instance_id);
                 break;
             }
         }
-    }
-
-    if (env.message_type == someip::MessageType::RESPONSE ||
-        env.message_type == someip::MessageType::ERROR) {
-        complete_pending_rpc(env.correlation_id, env.payload,
-                             env.message_type == someip::MessageType::ERROR
-                                 ? someip::rpc::RpcResult::INTERNAL_ERROR
-                                 : someip::rpc::RpcResult::SUCCESS);
     }
 
     if (mapping != nullptr && should_forward_to_someip(*mapping)) {
@@ -191,8 +107,9 @@ void Iceoryx2Gateway::handle_incoming_envelope(const Iceoryx2Envelope& env,
                 (void)it->second->publish_event(env.method_or_event_id, sm.get_payload());
                 record_external_to_someip(sm.get_payload().size());
             }
-        } else if (env.message_type == someip::MessageType::REQUEST ||
-                   env.message_type == someip::MessageType::REQUEST_NO_RETURN) {
+        } else if ((env.message_type == someip::MessageType::REQUEST ||
+                    env.message_type == someip::MessageType::REQUEST_NO_RETURN) &&
+                   rpc_client_ != nullptr) {
             someip::rpc::RpcSyncResult r = rpc_client_->call_method_sync(
                 env.service_id, env.method_or_event_id, env.payload, someip::rpc::RpcTimeout{});
             someip::MessageId mid(env.service_id, env.method_or_event_id);
@@ -202,12 +119,6 @@ void Iceoryx2Gateway::handle_incoming_envelope(const Iceoryx2Envelope& env,
                                 : someip::MessageType::ERROR;
             someip::Message resp(mid, rid, mt);
             resp.set_payload(r.return_values);
-            {
-                std::lock_guard<std::mutex> lk(sink_mutex_);
-                if (someip_outbound_sink_) {
-                    someip_outbound_sink_(resp);
-                }
-            }
             auto out_sample =
                 translator_.someip_to_sample(resp, env.instance_id, env.mode);
             std::string rname = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
@@ -218,9 +129,12 @@ void Iceoryx2Gateway::handle_incoming_envelope(const Iceoryx2Envelope& env,
         }
     }
 
-    if (external_message_callback_) {
-        ExternalMessage ext = translator_.envelope_to_external(env, iceoryx2_name);
-        external_message_callback_(ext.source_service_id, ext.source_method_id, ext.payload);
+    {
+        std::lock_guard<std::mutex> lk(callback_mutex_);
+        if (external_message_callback_) {
+            ExternalMessage ext = translator_.envelope_to_external(env, iceoryx2_name);
+            external_message_callback_(ext.source_service_id, ext.source_method_id, ext.payload);
+        }
     }
 }
 
@@ -237,76 +151,13 @@ someip::Result Iceoryx2Gateway::bridge_pub_sub_someip_to_external(const someip::
 }
 
 someip::Result Iceoryx2Gateway::bridge_rpc_someip_to_external(const someip::Message& msg,
-                                                             const ServiceMapping& mapping) {
+                                                              const ServiceMapping& mapping) {
     std::string name = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
         config_.service_name_prefix, mapping.someip_service_id, mapping.someip_instance_id,
         msg.get_method_id(), 'R');
     return publish_toward_iceoryx2(
         name, translator_.someip_to_sample(msg, mapping.someip_instance_id, mapping.mode),
         &mapping);
-}
-
-void Iceoryx2Gateway::forward_someip_event_notification(
-    const someip::events::EventNotification& n, const ServiceMapping& mapping) {
-
-    someip::MessageId mid(n.service_id, n.event_id);
-    someip::RequestId rid(n.client_id, n.session_id);
-    someip::Message msg(mid, rid, someip::MessageType::NOTIFICATION);
-    msg.set_payload(n.event_data);
-    (void)bridge_pub_sub_someip_to_external(msg, mapping);
-}
-
-someip::rpc::RpcResult Iceoryx2Gateway::rpc_handler_bridge_to_iceoryx2(
-    const ServiceMapping& mapping, uint16_t method_id, uint16_t client_id, uint16_t session_id,
-    const std::vector<uint8_t>& in, std::vector<uint8_t>& out) {
-
-    someip::MessageId msg_id(mapping.someip_service_id, method_id);
-    someip::RequestId rid(client_id, session_id);
-    someip::Message msg(msg_id, rid, someip::MessageType::REQUEST);
-    msg.set_payload(in);
-
-    std::ostringstream corr;
-    corr << std::hex << std::setfill('0') << std::setw(4) << client_id << "-" << std::setw(4)
-         << session_id;
-    const std::string correlation_id = corr.str();
-
-    auto slot = std::make_shared<Iceoryx2PendingRpc>();
-    {
-        std::lock_guard<std::mutex> g(pending_rpc_mutex_);
-        pending_by_correlation_[correlation_id] = slot;
-    }
-
-    auto sample = translator_.someip_to_sample(msg, mapping.someip_instance_id, mapping.mode);
-    std::string io_name = Iceoryx2MessageTranslator::build_iceoryx2_service_name(
-        config_.service_name_prefix, mapping.someip_service_id, mapping.someip_instance_id,
-        method_id, 'R');
-
-    const someip::Result pub_res = publish_toward_iceoryx2(io_name, sample, &mapping);
-    if (!someip::is_success(pub_res)) {
-        std::lock_guard<std::mutex> g(pending_rpc_mutex_);
-        pending_by_correlation_.erase(correlation_id);
-        return someip::rpc::RpcResult::INTERNAL_ERROR;
-    }
-
-    std::unique_lock<std::mutex> lk(slot->mutex);
-    const bool ok = slot->cv.wait_for(lk, config_.rpc_bridge_timeout, [&] { return slot->done; });
-    std::vector<uint8_t> payload_copy;
-    someip::rpc::RpcResult result_copy = someip::rpc::RpcResult::INTERNAL_ERROR;
-    if (ok) {
-        payload_copy = slot->payload;
-        result_copy = slot->result;
-    }
-    lk.unlock();
-    {
-        std::lock_guard<std::mutex> g(pending_rpc_mutex_);
-        pending_by_correlation_.erase(correlation_id);
-    }
-
-    if (!ok) {
-        return someip::rpc::RpcResult::TIMEOUT;
-    }
-    out = std::move(payload_copy);
-    return result_copy;
 }
 
 void Iceoryx2Gateway::setup_rpc_server_for_mapping(const ServiceMapping& mapping) {
@@ -320,15 +171,26 @@ void Iceoryx2Gateway::setup_rpc_server_for_mapping(const ServiceMapping& mapping
     }
     someip::rpc::RpcServer& srv = *rpc_servers_[sid];
     for (uint16_t mid : mapping.someip_method_ids) {
-        if (rpc_registered_methods_[sid].count(mid) != 0U) {
-            continue;
-        }
-        (void)srv.register_method(
-            mid, [this, mapping, mid](uint16_t client_id, uint16_t session_id,
-                                      const std::vector<uint8_t>& in, std::vector<uint8_t>& o) {
-                return rpc_handler_bridge_to_iceoryx2(mapping, mid, client_id, session_id, in, o);
+        const bool registered =
+            srv.register_method(mid, [this, mapping, mid](uint16_t client_id, uint16_t session_id,
+                                                          const std::vector<uint8_t>& in,
+                                                          std::vector<uint8_t>& /*out*/) {
+                someip::MessageId msg_id(mapping.someip_service_id, mid);
+                someip::RequestId rid(client_id, session_id);
+                someip::Message req(msg_id, rid, someip::MessageType::REQUEST);
+                req.set_payload(in);
+                const someip::Result pr = publish_toward_iceoryx2(
+                    Iceoryx2MessageTranslator::build_iceoryx2_service_name(
+                        config_.service_name_prefix, mapping.someip_service_id,
+                        mapping.someip_instance_id, mid, 'R'),
+                    translator_.someip_to_sample(req, mapping.someip_instance_id, mapping.mode),
+                    &mapping);
+                if (!someip::is_success(pr)) {
+                    return someip::rpc::RpcResult::INTERNAL_ERROR;
+                }
+                return someip::rpc::RpcResult::SUCCESS;
             });
-        rpc_registered_methods_[sid].insert(mid);
+        (void)registered;
     }
 }
 
@@ -339,15 +201,18 @@ void Iceoryx2Gateway::setup_event_subscriptions_for_mapping(const ServiceMapping
     for (uint16_t eg : mapping.someip_event_group_ids) {
         const auto tup =
             std::make_tuple(mapping.someip_service_id, mapping.someip_instance_id, eg);
-        if (eventgroup_subscriptions_done_.count(tup) != 0U) {
+        if (!g_eventgroup_subscribed.insert(tup).second) {
             continue;
         }
         (void)event_subscriber_->subscribe_eventgroup(
             mapping.someip_service_id, mapping.someip_instance_id, eg,
             [this, mapping](const someip::events::EventNotification& n) {
-                forward_someip_event_notification(n, mapping);
+                someip::MessageId mid(n.service_id, n.event_id);
+                someip::RequestId rid(n.client_id, n.session_id);
+                someip::Message msg(mid, rid, someip::MessageType::NOTIFICATION);
+                msg.set_payload(n.event_data);
+                (void)bridge_pub_sub_someip_to_external(msg, mapping);
             });
-        eventgroup_subscriptions_done_.insert(tup);
     }
 }
 
@@ -358,16 +223,15 @@ someip::Result Iceoryx2Gateway::setup_sd_proxy_for_mapping(const ServiceMapping&
     const uint16_t sid = mapping.someip_service_id;
     (void)sd_client_->find_service(sid, [this](const std::vector<someip::sd::ServiceInstance>& found) {
         (void)found;
-        sd_finds_handled_++;
+        sd_finds_handled_.fetch_add(1, std::memory_order_relaxed);
     });
 
     someip::sd::ServiceInstance inst(mapping.someip_service_id, mapping.someip_instance_id, 1, 0);
-    inst.ip_address = config_.someip_listen_endpoint.address;
-    inst.port = config_.someip_listen_endpoint.port;
-    const std::string ep =
-        inst.ip_address + ":" + std::to_string(static_cast<int>(inst.port));
+    inst.ip_address = config_.someip_listen_endpoint.get_address();
+    inst.port = config_.someip_listen_endpoint.get_port();
+    const std::string ep = inst.ip_address + ":" + std::to_string(static_cast<int>(inst.port));
     if (sd_server_->offer_service(inst, ep, "")) {
-        sd_offers_sent_++;
+        sd_offers_sent_.fetch_add(1, std::memory_order_relaxed);
     }
     return someip::Result::SUCCESS;
 }
@@ -377,16 +241,16 @@ someip::Result Iceoryx2Gateway::start() {
         return someip::Result::SUCCESS;
     }
 
-    rpc_registered_methods_.clear();
-    eventgroup_subscriptions_done_.clear();
-    {
-        std::lock_guard<std::mutex> lk(simulated_out_mutex_);
-        simulated_outbound_.clear();
+    g_eventgroup_subscribed.clear();
+
+    if (config_.use_inprocess_shm_simulation) {
+        inprocess_bus_ = std::make_unique<Iceoryx2InprocessBus>();
     }
 
     event_subscriber_ = std::make_unique<someip::events::EventSubscriber>(config_.someip_client_id);
     if (!event_subscriber_->initialize()) {
         event_subscriber_.reset();
+        inprocess_bus_.reset();
         return someip::Result::NOT_INITIALIZED;
     }
 
@@ -415,7 +279,7 @@ someip::Result Iceoryx2Gateway::start() {
                 ec.event_id = eid;
                 ec.eventgroup_id =
                     m.someip_event_group_ids.empty() ? static_cast<uint16_t>(0)
-                                                       : m.someip_event_group_ids.front();
+                                                     : m.someip_event_group_ids.front();
                 (void)ep.register_event(ec);
             }
         }
@@ -441,18 +305,9 @@ someip::Result Iceoryx2Gateway::start() {
     if (config_.enable_someip_udp_listener) {
         udp_transport_ = std::make_unique<someip::transport::UdpTransport>(
             config_.someip_listen_endpoint, config_.udp_config);
-        udp_listener_ = std::make_unique<UdpBridgeListener>(this);
+        udp_listener_ = std::make_unique<GatewayUdpBridgeListener>(*this);
         udp_transport_->set_listener(udp_listener_.get());
         if (someip::is_error(udp_transport_->start())) {
-            (void)stop();
-            return someip::Result::NETWORK_ERROR;
-        }
-    }
-
-    if (config_.enable_someip_tcp_transport) {
-        tcp_transport_ = std::make_unique<someip::transport::TcpTransport>(config_.tcp_config);
-        if (someip::is_error(tcp_transport_->initialize(config_.someip_listen_endpoint)) ||
-            someip::is_error(tcp_transport_->start())) {
             (void)stop();
             return someip::Result::NETWORK_ERROR;
         }
@@ -475,11 +330,6 @@ someip::Result Iceoryx2Gateway::stop() {
     }
     udp_listener_.reset();
 
-    if (tcp_transport_ != nullptr) {
-        (void)tcp_transport_->stop();
-        tcp_transport_.reset();
-    }
-
     for (auto& p : event_publishers_) {
         if (p.second != nullptr) {
             p.second->shutdown();
@@ -498,8 +348,6 @@ someip::Result Iceoryx2Gateway::stop() {
         }
     }
     rpc_servers_.clear();
-    rpc_registered_methods_.clear();
-    eventgroup_subscriptions_done_.clear();
 
     if (rpc_client_ != nullptr) {
         rpc_client_->shutdown();
@@ -515,10 +363,8 @@ someip::Result Iceoryx2Gateway::stop() {
         sd_server_.reset();
     }
 
-    {
-        std::lock_guard<std::mutex> g(pending_rpc_mutex_);
-        pending_by_correlation_.clear();
-    }
+    inprocess_bus_.reset();
+    g_eventgroup_subscribed.clear();
 
     return someip::Result::SUCCESS;
 }
@@ -527,7 +373,20 @@ someip::Result Iceoryx2Gateway::on_someip_message(const someip::Message& msg) {
     if (!is_running()) {
         return someip::Result::INVALID_STATE;
     }
-    const ServiceMapping* m = resolve_mapping(msg);
+    const uint16_t service_id = msg.get_service_id();
+    const ServiceMapping* m = find_mapping_for_service(service_id, 0x0001);
+    if (m == nullptr) {
+        m = find_mapping_for_service(service_id, 0x0000);
+    }
+    if (m == nullptr) {
+        const std::vector<ServiceMapping> mappings = get_service_mappings();
+        for (const auto& sm : mappings) {
+            if (sm.someip_service_id == service_id) {
+                m = find_mapping_for_service(service_id, sm.someip_instance_id);
+                break;
+            }
+        }
+    }
     if (m == nullptr) {
         return someip::Result::INVALID_SERVICE_ID;
     }
@@ -550,7 +409,7 @@ someip::Result Iceoryx2Gateway::on_someip_message(const someip::Message& msg) {
 }
 
 void Iceoryx2Gateway::inject_iceoryx2_sample(const std::string& iceoryx2_service_name,
-                                            const std::vector<uint8_t>& sample) {
+                                             const std::vector<uint8_t>& sample) {
     std::optional<Iceoryx2Envelope> env = translator_.parse_sample(sample);
     if (!env.has_value()) {
         record_translation_error();

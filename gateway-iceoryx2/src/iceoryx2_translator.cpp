@@ -13,7 +13,7 @@ namespace opensomeip {
 namespace gateway {
 namespace iceoryx2 {
 
-std::string Iceoryx2Translator::build_iceoryx2_service_name(
+std::string Iceoryx2MessageTranslator::build_iceoryx2_service_name(
     const std::string& prefix, uint16_t service_id, uint16_t instance_id,
     uint16_t method_or_event_id, char kind_tag) {
 
@@ -24,7 +24,7 @@ std::string Iceoryx2Translator::build_iceoryx2_service_name(
     return o.str();
 }
 
-void Iceoryx2Translator::serialize_envelope(someip::serialization::Serializer& ser,
+void Iceoryx2MessageTranslator::serialize_envelope(someip::serialization::Serializer& ser,
                                                    const Iceoryx2Envelope& env) {
     ser.serialize_uint32(Iceoryx2Envelope::kMagic);
     ser.serialize_uint8(env.version);
@@ -44,7 +44,7 @@ void Iceoryx2Translator::serialize_envelope(someip::serialization::Serializer& s
     }
 }
 
-std::optional<Iceoryx2Envelope> Iceoryx2Translator::deserialize_envelope(
+std::optional<Iceoryx2Envelope> Iceoryx2MessageTranslator::deserialize_envelope(
     someip::serialization::Deserializer& deser) {
 
     Iceoryx2Envelope env;
@@ -118,7 +118,7 @@ std::optional<Iceoryx2Envelope> Iceoryx2Translator::deserialize_envelope(
     return env;
 }
 
-std::vector<uint8_t> Iceoryx2Translator::someip_to_sample(
+std::vector<uint8_t> Iceoryx2MessageTranslator::someip_to_sample(
     const someip::Message& msg, uint16_t instance_id, TranslationMode mode) const {
 
     Iceoryx2Envelope env;
@@ -147,14 +147,14 @@ std::vector<uint8_t> Iceoryx2Translator::someip_to_sample(
     return std::vector<uint8_t>(ser.get_buffer().begin(), ser.get_buffer().end());
 }
 
-std::optional<Iceoryx2Envelope> Iceoryx2Translator::parse_sample(
+std::optional<Iceoryx2Envelope> Iceoryx2MessageTranslator::parse_sample(
     const std::vector<uint8_t>& data) const {
 
     someip::serialization::Deserializer deser(data);
     return deserialize_envelope(deser);
 }
 
-someip::Message Iceoryx2Translator::envelope_to_someip(
+someip::Message Iceoryx2MessageTranslator::envelope_to_someip(
     const Iceoryx2Envelope& env) const {
 
     someip::MessageId mid(env.service_id, env.method_or_event_id);
@@ -169,7 +169,7 @@ someip::Message Iceoryx2Translator::envelope_to_someip(
     return msg;
 }
 
-ExternalMessage Iceoryx2Translator::envelope_to_external(
+ExternalMessage Iceoryx2MessageTranslator::envelope_to_external(
     const Iceoryx2Envelope& env, const std::string& topic) const {
 
     ExternalMessage ext;
