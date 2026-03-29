@@ -18,13 +18,6 @@ permissions:
   contents: read
   checks: write
 
-env:
-  UBUNTU_GATEWAY_DEPS: >-
-    libpaho-mqtt-dev libpaho-mqttpp-dev
-    libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc
-    libsystemd-dev
-    cyclonedds-dev libcyclonedds0
-
 jobs:
   build:
     name: ${{ matrix.os }} / ${{ matrix.compiler }}
@@ -57,7 +50,11 @@ jobs:
       - name: Install gateway SDK dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ${{ env.UBUNTU_GATEWAY_DEPS }}
+          sudo apt-get install -y -qq \
+            libpaho-mqtt-dev libpaho-mqttpp-dev \
+            libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc \
+            libsystemd-dev \
+            cyclonedds-dev
 
       - name: Configure
         run: >
@@ -122,10 +119,9 @@ jobs:
         run: |
           dnf install -y --setopt=install_weak_deps=False \
             gcc gcc-c++ clang cmake ninja-build git \
-            paho-mqtt-c-devel paho-mqtt-cpp-devel \
+            paho-c-devel paho-cpp-devel \
             grpc-devel grpc-plugins protobuf-devel \
-            systemd-devel \
-            cyclonedds-devel
+            systemd-devel
 
       - uses: actions/checkout@v4
 
@@ -151,7 +147,6 @@ jobs:
           -DBUILD_GATEWAY_GRPC=ON
           -DBUILD_GATEWAY_ROS2=ON
           -DBUILD_GATEWAY_DBUS=ON
-          -DBUILD_GATEWAY_DDS=ON
 
       - name: Build
         run: cmake --build build --config Release
@@ -190,7 +185,11 @@ jobs:
       - name: Install gateway SDK + coverage dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq gcovr lcov ${{ env.UBUNTU_GATEWAY_DEPS }}
+          sudo apt-get install -y -qq gcovr lcov \
+            libpaho-mqtt-dev libpaho-mqttpp-dev \
+            libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc \
+            libsystemd-dev \
+            cyclonedds-dev
 
       - name: Configure with coverage
         run: >
@@ -288,7 +287,11 @@ jobs:
       - name: Install gateway SDK dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ${{ env.UBUNTU_GATEWAY_DEPS }}
+          sudo apt-get install -y -qq \
+            libpaho-mqtt-dev libpaho-mqttpp-dev \
+            libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc \
+            libsystemd-dev \
+            cyclonedds-dev
 
       - name: Configure (Debug + Sanitizers)
         run: >
@@ -342,8 +345,7 @@ jobs:
         run: ln -sfn "${{ github.workspace }}/some-ip" ../some-ip
 
       - name: Install gateway SDK dependencies
-        run: |
-          brew install eclipse-paho-mqtt-c paho-mqtt-cpp grpc protobuf
+        run: brew install grpc protobuf
 
       - name: Configure
         run: >
@@ -352,7 +354,6 @@ jobs:
           -DBUILD_TESTS=ON
           -DBUILD_EXAMPLES=OFF
           -DBUILD_GATEWAY_ICEORYX2=ON
-          -DBUILD_GATEWAY_MQTT=ON
           -DBUILD_GATEWAY_GRPC=ON
           -DBUILD_GATEWAY_ROS2=ON
           -DBUILD_GATEWAY_DBUS=ON
