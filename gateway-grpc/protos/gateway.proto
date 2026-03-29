@@ -1,0 +1,49 @@
+/********************************************************************************
+ * Copyright (c) 2025 Vinicius Tadeu Zein
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ ********************************************************************************/
+
+syntax = "proto3";
+
+package opensomeip.gateway.grpc.v1;
+
+option java_multiple_files = true;
+option java_package = "org.opensomeip.gateway.grpc.v1";
+
+message SomeIpEnvelope {
+  uint32 service_id = 1;
+  uint32 method_or_event_id = 2;
+  uint32 client_id = 3;
+  uint32 session_id = 4;
+  uint32 message_type = 5;
+  uint32 return_code = 6;
+  bytes payload = 7;
+  uint32 instance_id = 8;
+  bytes serialized_someip_frame = 9;
+}
+
+message UnaryRpcRequest {
+  SomeIpEnvelope envelope = 1;
+  string cloud_target_name = 2;
+}
+
+message UnaryRpcResponse {
+  SomeIpEnvelope envelope = 1;
+}
+
+message EventSubscribe {
+  uint32 service_id = 1;
+  uint32 instance_id = 2;
+  uint32 event_group_id = 3;
+  uint32 client_id = 4;
+}
+
+message EventFrame {
+  SomeIpEnvelope envelope = 1;
+}
+
+service SomeIpGateway {
+  rpc UnarySomeIp(UnaryRpcRequest) returns (UnaryRpcResponse);
+  rpc StreamSomeIpEvents(EventSubscribe) returns (stream EventFrame);
+}

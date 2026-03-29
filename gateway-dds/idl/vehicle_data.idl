@@ -1,0 +1,22 @@
+/* Sample vehicle types for Adaptive / cloud DDS consumers. Bridge sample carries opaque SOME/IP. */
+module vehicle {
+  struct VehicleSpeed {
+    float speed_kph;
+    octet quality_percent;
+  };
+
+  struct VehiclePosition {
+    double latitude_deg;
+    double longitude_deg;
+    float altitude_m;
+  };
+
+  /** Serialized SOME/IP payload and addressing metadata for gateway topics. */
+  struct SomeipBridgeSample {
+    unsigned short service_id;
+    unsigned short instance_id;
+    unsigned short method_or_event_id;
+    octet message_type;
+    sequence<octet> payload;
+  };
+};

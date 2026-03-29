@@ -1,0 +1,32 @@
+# Example Cyclone DDS-related settings for the SOME/IP ↔ DDS gateway.
+# CYCLONEDDS_URI can point at an XML file; see Cyclone DDS documentation.
+
+domain_id: 0
+participant_name: opensomeip-dds-gateway
+
+# Optional Cyclone DDS QoS / discovery XML (passed as file:// path at runtime).
+qos_profile_file: /etc/cyclonedds/config.xml
+
+someip:
+  default_someip_instance_id: 0x0001
+  assume_tcp_semantics_for_rpc: true
+  enable_udp_listener: false
+  udp_listen: "0.0.0.0:30500"
+
+rpc_client_id: 0x7100
+
+sd:
+  enable_client: false
+  enable_server: false
+
+e2e:
+  use_e2e: false
+
+dds_topics:
+  - name: opensomeip/svc/0x6001/inst/0x0001/event/0x8001
+    reliability: best_effort
+    durability: volatile
+  - name: opensomeip/svc/0x6001/inst/0x0001/method/0x0001
+    reliability: reliable
+    durability: volatile
+    history_depth: 16

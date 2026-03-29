@@ -1,0 +1,89 @@
+# SOME/IP ↔ MQTT gateway configuration
+gateway:
+  name: "vehicle-telemetry-gw"
+  log_level: info
+
+  mqtt:
+    broker: "mqtts://fleet.example.com:8883"
+    client_id: "vehicle-${vin}"
+    protocol_version: 5
+    keepalive_seconds: 60
+    clean_session: true
+
+    tls:
+      enabled: true
+      ca_cert: "/etc/gateway/ca.pem"
+      client_cert: "/etc/gateway/client.pem"
+      client_key: "/etc/gateway/client.key"
+
+    reconnect:
+      auto: true
+      min_delay_ms: 1000
+      max_delay_ms: 60000
+
+    last_will:
+      enabled: true
+      topic: "vehicle/${vin}/someip/sd/status"
+      payload: "offline"
+      qos: 1
+      retain: true
+
+    defaults:
+      publish_qos: 1
+      subscribe_qos: 1
+      outbound_encoding: json   # raw, json, someip_framed
+      inbound_encoding: raw
+
+    offline_buffer_capacity: 512
+
+  vin: "WBA12345678901234"
+  topic_prefix: "vehicle"
+
+  someip:
+    local_address: "0.0.0.0"
+    local_port: 30500
+    sd_multicast: "239.255.255.250"
+    sd_port: 30490
+
+  service_mappings:
+    - someip:
+        service_id: 0x1000
+        instance_id: 0x0001
+        event_groups: [0x0001]
+      mqtt:
+        topic_prefix: "vehicle/${vin}/telemetry/speed"
+        qos: 0
+        retain: false
+        encoding: json
+      direction: someip_to_mqtt
+
+    - someip:
+        service_id: 0x1001
+        instance_id: 0x0001
+        event_groups: [0x0001, 0x0002]
+      mqtt:
+        topic_prefix: "vehicle/${vin}/telemetry/position"
+        qos: 0
+        encoding: json
+      direction: someip_to_mqtt
+
+    - someip:
+        service_id: 0x2000
+        instance_id: 0x0001
+        methods: [0x0001]
+      mqtt:
+        request_topic: "vehicle/${vin}/command/door_lock"
+        response_topic: "vehicle/${vin}/command/door_lock/response"
+        qos: 1
+        encoding: raw
+      direction: bidirectional
+
+    - someip:
+        service_id: 0x3000
+        instance_id: 0x0001
+        methods: [0x0001, 0x0002]
+      mqtt:
+        topic_prefix: "vehicle/${vin}/diagnostic"
+        qos: 2
+        encoding: someip_framed
+      direction: bidirectional

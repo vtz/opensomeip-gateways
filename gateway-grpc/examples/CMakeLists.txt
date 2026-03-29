@@ -1,0 +1,2 @@
+add_executable(grpc_digital_twin grpc_digital_twin.cpp)
+target_link_libraries(grpc_digital_twin PRIVATE opensomeip-gateway-grpc)

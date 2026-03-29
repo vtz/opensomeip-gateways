@@ -1,0 +1,39 @@
+---
+Checks: >
+  clang-analyzer-*,
+  modernize-use-default-member-init,
+  modernize-use-equals-default,
+  modernize-use-scoped-lock,
+  readability-braces-around-statements,
+  readability-simplify-boolean-expr,
+  readability-redundant-member-init,
+  performance-avoid-endl,
+  -clang-diagnostic-*,
+  -performance-enum-size,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -modernize-use-nodiscard,
+  -readability-function-cognitive-complexity,
+  -modernize-return-braced-init-list,
+  -modernize-use-equals-delete
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*'
+FormatStyle: file
+CheckOptions:
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelCase
+  - key: readability-identifier-naming.VariableCase
+    value: snake_case
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UPPER_CASE
+...

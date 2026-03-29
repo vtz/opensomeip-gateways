@@ -1,0 +1,2 @@
+add_executable(dds_adaptive_bridge dds_adaptive_bridge.cpp)
+target_link_libraries(dds_adaptive_bridge PRIVATE opensomeip-gateway-dds)

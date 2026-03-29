@@ -1,0 +1,41 @@
+# SOME/IP ↔ iceoryx2 gateway configuration
+gateway:
+  name: "radar-iceoryx2-bridge"
+  log_level: info
+
+  iceoryx2:
+    service_name_prefix: "vehicle/ecu1/someip"
+    shared_memory:
+      max_sample_bytes: 65536
+      subscriber_max_buffer_size: 8
+      publisher_history_size: 1
+      max_publishers: 8
+      max_subscribers: 16
+      enable_safe_overflow: true
+
+  someip:
+    client_id: 0x4200
+    sd_proxy: true
+    udp_listener:
+      enabled: false
+      address: "0.0.0.0"
+      port: 30500
+
+  service_mappings:
+    - someip:
+        service_id: 0x1234
+        instance_id: 0x0001
+        event_groups: [0x0001]
+      iceoryx2:
+        service: "radar/front"
+      mode: opaque
+      direction: bidirectional
+
+    - someip:
+        service_id: 0x2000
+        instance_id: 0x0001
+        methods: [0x0001, 0x0002]
+      iceoryx2:
+        service: "vehicle/control"
+      mode: opaque
+      direction: bidirectional

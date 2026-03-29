@@ -1,0 +1,43 @@
+# SOME/IP ↔ Zenoh gateway configuration
+gateway:
+  name: "ecu1-zenoh-bridge"
+  log_level: info
+
+  zenoh:
+    mode: "client"
+    connect:
+      - "tcp/vehicle-gateway:7447"
+    listen: []
+    key_prefix: "vehicle/ecu1/someip"
+    shared_memory:
+      enabled: false
+      threshold_bytes: 32768
+    payload_encoding: raw
+
+  someip:
+    bind_address: "0.0.0.0"
+    bind_port: 30500
+    remote_address: "127.0.0.1"
+    remote_port: 30501
+    rpc_client_id: 0x0042
+    enable_udp: true
+    enable_sd: true
+    enable_liveliness_bridge: true
+
+  service_mappings:
+    - someip:
+        service_id: 0x1234
+        instance_id: 0x0001
+        event_groups: [0x0001]
+      zenoh:
+        key_expr: "vehicle/ecu1/someip/radar/objects"
+        encoding: raw
+      direction: someip_to_zenoh
+
+    - someip:
+        service_id: 0x2000
+        instance_id: 0x0001
+        methods: [0x0001]
+      zenoh:
+        key_expr: "vehicle/ecu1/someip/control/steering"
+      direction: bidirectional

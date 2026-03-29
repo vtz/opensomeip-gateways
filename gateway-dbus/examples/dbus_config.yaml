@@ -1,0 +1,29 @@
+# SOME/IP ↔ D-Bus gateway example configuration (reference; load in your orchestrator as needed)
+gateway:
+  name: opensomeip-dbus-gateway
+  protocol: dbus
+
+dbus:
+  bus_type: system          # system | session
+  bus_name_prefix: com.opensomeip.vehicle
+  object_path_prefix: /com/opensomeip/vehicle
+  enable_introspection: true
+
+someip:
+  local_address: "0.0.0.0"
+  local_port: 30500
+  sd_multicast: "239.255.255.250"
+  sd_port: 30490
+  use_tcp: false
+
+rpc:
+  client_id: 0x7101
+
+mappings:
+  - someip_service_id: 0x4500
+    someip_instance_id: 0x0001
+    someip_method_ids: [0x0001, 0x0002]
+    someip_event_group_ids: [0x0001]
+    external_identifier: vehicle.telematics
+    direction: bidirectional
+    mode: opaque

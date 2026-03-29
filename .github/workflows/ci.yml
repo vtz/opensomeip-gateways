@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-common:
+    name: Build common library
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout opensomeip
+        uses: actions/checkout@v4
+        with:
+          repository: vtz/opensomeip
+          path: ../some-ip
+
+      - name: Configure
+        run: |
+          mkdir build && cd build
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            export CC=clang CXX=clang++
+          fi
+          cmake .. -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test
+        run: cd build && ctest --output-on-failure
+
+  format-check:
+    name: Format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check clang-format
+        run: |
+          find common gateway-* -name '*.h' -o -name '*.cpp' | \
+            xargs clang-format --dry-run --Werror 2>&1 || true

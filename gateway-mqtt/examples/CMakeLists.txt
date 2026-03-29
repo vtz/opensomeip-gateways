@@ -1,0 +1,2 @@
+add_executable(mqtt_vehicle_telemetry mqtt_vehicle_telemetry.cpp)
+target_link_libraries(mqtt_vehicle_telemetry PRIVATE opensomeip-gateway-mqtt)

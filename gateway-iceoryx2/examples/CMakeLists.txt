@@ -1,0 +1,2 @@
+add_executable(iceoryx2_bridge_example iceoryx2_bridge_example.cpp)
+target_link_libraries(iceoryx2_bridge_example PRIVATE opensomeip-gateway-iceoryx2)

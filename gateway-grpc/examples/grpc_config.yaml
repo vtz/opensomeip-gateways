@@ -1,0 +1,38 @@
+# SOME/IP ↔ gRPC gateway configuration
+gateway:
+  name: "vehicle-grpc-bridge"
+  log_level: info
+
+  grpc:
+    server:
+      listen_address: "0.0.0.0:50051"
+      tls:
+        enabled: true
+        cert_chain: "/etc/gateway/server.pem"
+        private_key: "/etc/gateway/server.key"
+        client_ca: "/etc/gateway/ca.pem"
+        require_client_cert: true
+      max_concurrent_streams: 100
+
+    client_targets:
+      - name: "ota_service"
+        address: "ota.cloud.example.com:443"
+        tls:
+          enabled: true
+          root_ca: "/etc/gateway/cloud-ca.pem"
+
+  someip:
+    bridge_client_id: 0x7001
+    rpc_response_timeout_ms: 5000
+
+  service_mappings:
+    - someip:
+        service_id: 0x1234
+        instance_id: 0x0001
+        methods: [0x0001, 0x0002]
+        event_groups: [0x0001]
+      grpc:
+        service: "vehicle.gateway.RadarService"
+        proto_file: "protos/radar.proto"
+      mode: schema_driven
+      direction: bidirectional
