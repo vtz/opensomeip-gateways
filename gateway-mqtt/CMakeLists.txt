@@ -1,7 +1,7 @@
 # Copyright (c) 2025 Vinicius Tadeu Zein
 # SPDX-License-Identifier: Apache-2.0
 
-find_package(PahoMqttCpp CONFIG QUIET)
+find_package(PahoMqttCpp CONFIG REQUIRED)
 
 add_library(opensomeip-gateway-mqtt
     src/mqtt_gateway.cpp
@@ -16,12 +16,10 @@ target_include_directories(opensomeip-gateway-mqtt
 target_link_libraries(opensomeip-gateway-mqtt
     PUBLIC
         opensomeip-gateway-common
+        PahoMqttCpp::paho-mqttpp3
 )
 
-if(PahoMqttCpp_FOUND)
-    target_link_libraries(opensomeip-gateway-mqtt PUBLIC PahoMqttCpp::paho-mqttpp3)
-    target_compile_definitions(opensomeip-gateway-mqtt PUBLIC HAVE_PAHO_MQTT=1)
-endif()
+target_compile_definitions(opensomeip-gateway-mqtt PUBLIC HAVE_PAHO_MQTT=1)
 
 if(BUILD_TESTS)
     add_executable(test_mqtt_gateway

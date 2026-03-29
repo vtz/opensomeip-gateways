@@ -25,23 +25,31 @@ The CI runs on every push to `main` and on pull requests:
 | Sanitizers | Ubuntu | GCC, Clang | AddressSanitizer + UndefinedBehaviorSanitizer |
 | Test Results | — | — | Aggregate JUnit XML and publish check results |
 
-### Gateway-Specific Dependencies
+### Gateway SDK Dependencies
 
-Not all gateways can be built on all platforms. The CI builds all gateways for which
-dependencies are automatically satisfied (common, iceoryx2, MQTT, gRPC, ROS2, D-Bus).
-Gateways whose SDKs are not installed build as stub libraries — the translator tests
-still run but runtime functionality is unavailable.
+CI installs all required SDKs from system packages and builds every gateway
+with the real libraries linked.
 
-| Gateway | External SDK Required | Available in CI | Stub Build |
-|---------|----------------------|-----------------|------------|
-| common | None | :white_check_mark: Always | — |
-| iceoryx2 | iceoryx2-cxx (optional) | Stub | :white_check_mark: |
-| MQTT | PahoMqttCpp (optional) | Stub | :white_check_mark: |
-| gRPC | gRPC + Protobuf (optional) | Stub | :white_check_mark: |
-| ROS2 | rclcpp + std_msgs (optional) | Stub | :white_check_mark: |
-| D-Bus | libsystemd (optional) | Stub | :white_check_mark: |
-| Zenoh | zenohc (required) | :x: Not built | — |
-| DDS | CycloneDDS (required) | :x: Not built | — |
+| Gateway | External SDK | CI Package (Ubuntu) | CI Package (Fedora) |
+|---------|-------------|---------------------|---------------------|
+| common | None | — | — |
+| iceoryx2 | iceoryx2-cxx | Not packaged (inprocess sim) | Not packaged (inprocess sim) |
+| MQTT | Paho MQTT C++ | `libpaho-mqttpp-dev` | `paho-mqtt-cpp-devel` |
+| gRPC | gRPC + Protobuf | `libgrpc++-dev` | `grpc-devel` |
+| ROS2 | rclcpp + std_msgs | Not packaged (callback mode) | Not packaged (callback mode) |
+| D-Bus | libsystemd | `libsystemd-dev` | `systemd-devel` |
+| Zenoh | zenohc | Not packaged | Not packaged |
+| DDS | CycloneDDS | `cyclonedds-dev` | `cyclonedds-devel` |
+
+**Notes:**
+
+- **iceoryx2**: Uses inprocess shared-memory simulation for testing. The iceoryx2-cxx
+  library is a Rust-based project without distro packages; full runtime testing requires
+  building it from source.
+- **ROS2**: Uses callback-based publish/subscribe without rclcpp. Full ROS2 runtime
+  testing requires a complete ROS2 installation.
+- **Zenoh**: The zenohc library is not available in distro package managers. A dedicated
+  CI job with manual SDK installation is planned.
 
 ## Compiler Requirements
 
