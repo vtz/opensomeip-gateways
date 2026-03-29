@@ -77,7 +77,7 @@ TEST(GrpcTranslatorTest, GrpcStatusCodeToReturnCode) {
               someip::ReturnCode::E_NOT_REACHABLE);
     EXPECT_EQ(GrpcTranslator::grpc_status_code_to_return_code(SC::DEADLINE_EXCEEDED),
               someip::ReturnCode::E_TIMEOUT);
-    EXPECT_EQ(GrpcTranslator::grpc_status_code_to_return_code(static_cast<::grpc::StatusCode>(999)),
+    EXPECT_EQ(GrpcTranslator::grpc_status_code_to_return_code(::grpc::StatusCode::DO_NOT_USE),
               someip::ReturnCode::E_NOT_OK);
 }
 
