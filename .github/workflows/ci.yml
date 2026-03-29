@@ -3,45 +3,381 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+
+permissions:
+  contents: read
+  checks: write
 
 jobs:
-  build-common:
-    name: Build common library
-    runs-on: ubuntu-latest
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         compiler: [gcc, clang]
+        include:
+          - compiler: gcc
+            cc: gcc
+            cxx: g++
+          - compiler: clang
+            cc: clang
+            cxx: clang++
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout opensomeip
+      - name: Checkout opensomeip core
         uses: actions/checkout@v4
         with:
           repository: vtz/opensomeip
-          path: ../some-ip
+          path: some-ip
 
       - name: Configure
+        run: >
+          cmake -B build -S .
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTS=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_GATEWAY_ICEORYX2=ON
+          -DBUILD_GATEWAY_MQTT=ON
+          -DBUILD_GATEWAY_GRPC=ON
+          -DBUILD_GATEWAY_ROS2=ON
+          -DBUILD_GATEWAY_DBUS=ON
+        env:
+          OPENSOMEIP_ROOT: ${{ github.workspace }}/some-ip
+
+      - name: Patch opensomeip path
         run: |
-          mkdir build && cd build
-          if [ "${{ matrix.compiler }}" = "clang" ]; then
-            export CC=clang CXX=clang++
+          if [ ! -d "../some-ip" ]; then
+            ln -s "${{ github.workspace }}/some-ip" ../some-ip
           fi
-          cmake .. -DCMAKE_BUILD_TYPE=Debug
 
       - name: Build
         run: cmake --build build -j$(nproc)
 
       - name: Test
-        run: cd build && ctest --output-on-failure
+        working-directory: build
+        run: |
+          mkdir -p "${{ github.workspace }}/gtest_results"
+          export GTEST_OUTPUT="xml:${{ github.workspace }}/gtest_results/"
+          ctest --output-on-failure --timeout 30 --no-tests=error --output-junit junit_results.xml
 
-  format-check:
-    name: Format check
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.os }}-${{ matrix.compiler }}
+          path: build/junit_results.xml
+          retention-days: 14
+
+      - name: Upload GTest results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gtest-results-${{ matrix.os }}-${{ matrix.compiler }}
+          path: ${{ github.workspace }}/gtest_results/
+          retention-days: 14
+
+  build-fedora:
+    name: Fedora 42 / ${{ matrix.compiler }}
     runs-on: ubuntu-latest
+    container:
+      image: fedora:42
+      credentials:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        include:
+          - compiler: gcc
+            cc: gcc
+            cxx: g++
+          - compiler: clang
+            cc: clang
+            cxx: clang++
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            gcc gcc-c++ clang cmake ninja-build git
+
+      - uses: actions/checkout@v4
+
+      - name: Checkout opensomeip core
+        uses: actions/checkout@v4
+        with:
+          repository: vtz/opensomeip
+          path: some-ip
+
+      - name: Symlink opensomeip
+        run: ln -s "${{ github.workspace }}/some-ip" ../some-ip || true
+
+      - name: Configure
+        run: >
+          cmake -G Ninja -B build
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTS=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_GATEWAY_ICEORYX2=ON
+          -DBUILD_GATEWAY_MQTT=ON
+          -DBUILD_GATEWAY_GRPC=ON
+          -DBUILD_GATEWAY_ROS2=ON
+          -DBUILD_GATEWAY_DBUS=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        working-directory: build
+        run: |
+          mkdir -p "${{ github.workspace }}/gtest_results"
+          export GTEST_OUTPUT="xml:${{ github.workspace }}/gtest_results/"
+          ctest --output-on-failure --timeout 30 --no-tests=error --output-junit junit_results.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-fedora42-${{ matrix.compiler }}
+          path: build/junit_results.xml
+          retention-days: 14
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: build
     steps:
       - uses: actions/checkout@v4
-      - name: Check clang-format
+
+      - name: Checkout opensomeip core
+        uses: actions/checkout@v4
+        with:
+          repository: vtz/opensomeip
+          path: some-ip
+
+      - name: Symlink opensomeip
+        run: ln -s "${{ github.workspace }}/some-ip" ../some-ip || true
+
+      - name: Install coverage tools
         run: |
-          find common gateway-* -name '*.h' -o -name '*.cpp' | \
-            xargs clang-format --dry-run --Werror 2>&1 || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcovr lcov
+
+      - name: Configure with coverage
+        run: >
+          cmake -B build
+          -DCMAKE_CXX_COMPILER=g++
+          -DCMAKE_C_COMPILER=gcc
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage"
+          -DCMAKE_C_FLAGS="--coverage -fprofile-arcs -ftest-coverage"
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+          -DBUILD_TESTS=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_GATEWAY_ICEORYX2=ON
+          -DBUILD_GATEWAY_MQTT=ON
+          -DBUILD_GATEWAY_GRPC=ON
+          -DBUILD_GATEWAY_ROS2=ON
+          -DBUILD_GATEWAY_DBUS=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure --timeout 30 --no-tests=error
+
+      - name: Generate coverage report
+        run: |
+          gcovr --root . \
+            --filter 'common/src/' \
+            --filter 'common/include/' \
+            --filter 'gateway-*/src/' \
+            --filter 'gateway-*/include/' \
+            --exclude '.*test.*' \
+            --exclude '.*example.*' \
+            --xml coverage.xml \
+            --html-details coverage.html \
+            --print-summary
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            coverage.html
+            coverage.*.html
+          retention-days: 14
+
+      - name: Code Coverage Summary
+        uses: irongut/CodeCoverageSummary@51cc3a756ddcd398d447c044c02cb6aa83fdae95 # v1.3.0
+        if: always()
+        with:
+          filename: coverage.xml
+          badge: true
+          format: markdown
+          output: both
+          fail_below_min: false
+
+      - name: Write coverage to Job Summary
+        if: always()
+        run: |
+          if [ -f code-coverage-results.md ]; then
+            cat code-coverage-results.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  sanitizers:
+    name: ASan + UBSan / ${{ matrix.compiler }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        include:
+          - compiler: gcc
+            cc: gcc
+            cxx: g++
+          - compiler: clang
+            cc: clang
+            cxx: clang++
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout opensomeip core
+        uses: actions/checkout@v4
+        with:
+          repository: vtz/opensomeip
+          path: some-ip
+
+      - name: Symlink opensomeip
+        run: ln -s "${{ github.workspace }}/some-ip" ../some-ip || true
+
+      - name: Configure (Debug + Sanitizers)
+        run: >
+          cmake -B build
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DBUILD_TESTS=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_GATEWAY_ICEORYX2=ON
+          -DBUILD_GATEWAY_MQTT=ON
+          -DBUILD_GATEWAY_GRPC=ON
+          -DBUILD_GATEWAY_ROS2=ON
+          -DBUILD_GATEWAY_DBUS=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test under sanitizers
+        working-directory: build
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:print_stats=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --output-on-failure --timeout 60 --no-tests=error --output-junit junit_results.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-sanitizers-${{ matrix.compiler }}
+          path: build/junit_results.xml
+          retention-days: 14
+
+  macos:
+    name: macOS / AppleClang
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout opensomeip core
+        uses: actions/checkout@v4
+        with:
+          repository: vtz/opensomeip
+          path: some-ip
+
+      - name: Symlink opensomeip
+        run: ln -s "${{ github.workspace }}/some-ip" ../some-ip || true
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTS=ON
+          -DBUILD_EXAMPLES=OFF
+          -DBUILD_GATEWAY_ICEORYX2=ON
+          -DBUILD_GATEWAY_MQTT=ON
+          -DBUILD_GATEWAY_GRPC=ON
+          -DBUILD_GATEWAY_ROS2=ON
+          -DBUILD_GATEWAY_DBUS=ON
+
+      - name: Build
+        run: cmake --build build -j$(sysctl -n hw.ncpu)
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure --timeout 30 --no-tests=error --output-junit junit_results.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-macos
+          path: build/junit_results.xml
+          retention-days: 14
+
+  publish-test-results:
+    name: Publish Test Results
+    runs-on: ubuntu-latest
+    needs: [build, build-fedora, coverage, sanitizers, macos]
+    if: always()
+    permissions:
+      checks: write
+    steps:
+      - name: Download GTest results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: gtest-results-*
+          path: gtest-downloads
+        continue-on-error: true
+
+      - name: Download JUnit results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          path: test-downloads
+        continue-on-error: true
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040 # v2
+        with:
+          files: |
+            gtest-downloads/**/*.xml
+            test-downloads/**/*.xml
+          check_name: "Gateway Test Results"
+          comment_mode: "off"
