@@ -116,8 +116,8 @@ private:
     const ::opensomeip::gateway::grpc::v1::EventSubscribe* request,
     ::grpc::ServerWriter<::opensomeip::gateway::grpc::v1::EventFrame>* writer) {
 
-    EventStreamKey key{request->service_id(), request->instance_id(), request->event_group_id()};
-    auto sink = std::make_shared<EventStreamSink>();
+    GrpcGateway::EventStreamKey key{request->service_id(), request->instance_id(), request->event_group_id()};
+    auto sink = std::make_shared<GrpcGateway::EventStreamSink>();
     owner_->register_event_stream(key, sink);
 
     someip::events::EventNotificationCallback on_evt = [this, sink](const someip::events::EventNotification& n) {
@@ -256,9 +256,8 @@ someip::Result GrpcGateway::start() {
 
     grpc_service_ = std::make_unique<detail::SomeIpGatewayGrpcService>(this);
     ::grpc::ServerBuilder builder;
-    ::grpc::ResourceQuota quota("opensomeip_grpc_gateway");
-    quota.SetMaxOutstandingRpcs(config_.max_concurrent_streams);
-    builder.SetResourceQuota(quota);
+    builder.SetMaxReceiveMessageSize(64 * 1024 * 1024);
+    builder.AddChannelArgument(GRPC_ARG_MAX_CONCURRENT_STREAMS, config_.max_concurrent_streams);
 
     int selected_port = 0;
     builder.AddListeningPort(config_.server_listen_address, build_server_credentials(), &selected_port);
