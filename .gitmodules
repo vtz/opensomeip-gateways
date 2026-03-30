@@ -1,0 +1,4 @@
+[submodule "extern/opensomeip"]
+	path = extern/opensomeip
+	url = https://github.com/vtz/opensomeip.git
+	branch = main

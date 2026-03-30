@@ -37,16 +37,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout opensomeip core
-        uses: actions/checkout@v4
         with:
-          repository: vtz/opensomeip
-          ref: v0.0.4
-          path: some-ip
-
-      - name: Symlink opensomeip for CMake
-        run: ln -sfn "${{ github.workspace }}/some-ip" ../some-ip
+          submodules: recursive
 
       - name: Install gateway SDK dependencies
         run: |
@@ -125,16 +117,8 @@ jobs:
             systemd-devel
 
       - uses: actions/checkout@v4
-
-      - name: Checkout opensomeip core
-        uses: actions/checkout@v4
         with:
-          repository: vtz/opensomeip
-          ref: v0.0.4
-          path: some-ip
-
-      - name: Symlink opensomeip for CMake
-        run: ln -sfn "$GITHUB_WORKSPACE/some-ip" ../some-ip || true
+          submodules: recursive
 
       - name: Configure
         run: >
@@ -174,16 +158,8 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout opensomeip core
-        uses: actions/checkout@v4
         with:
-          repository: vtz/opensomeip
-          ref: v0.0.4
-          path: some-ip
-
-      - name: Symlink opensomeip for CMake
-        run: ln -sfn "${{ github.workspace }}/some-ip" ../some-ip
+          submodules: recursive
 
       - name: Install gateway SDK + coverage dependencies
         run: |
@@ -277,16 +253,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout opensomeip core
-        uses: actions/checkout@v4
         with:
-          repository: vtz/opensomeip
-          ref: v0.0.4
-          path: some-ip
-
-      - name: Symlink opensomeip for CMake
-        run: ln -sfn "${{ github.workspace }}/some-ip" ../some-ip
+          submodules: recursive
 
       - name: Install gateway SDK dependencies
         run: |
@@ -338,16 +306,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout opensomeip core
-        uses: actions/checkout@v4
         with:
-          repository: vtz/opensomeip
-          ref: v0.0.4
-          path: some-ip
-
-      - name: Symlink opensomeip for CMake
-        run: ln -sfn "${{ github.workspace }}/some-ip" ../some-ip
+          submodules: recursive
 
       - name: Install gateway SDK dependencies
         run: brew install grpc protobuf

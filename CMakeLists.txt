@@ -32,17 +32,29 @@ option(BUILD_GATEWAY_DBUS     "Build SOME/IP <-> D-Bus gateway"    OFF)
 option(BUILD_GATEWAY_DDS      "Build SOME/IP <-> DDS gateway"      OFF)
 
 # ── opensomeip core dependency ───────────────────────────────────────────────
+# Resolution order:
+#   1. Already present as a CMake target (e.g. super-build)
+#   2. Installed system-wide (find_package)
+#   3. Git submodule at extern/opensomeip (preferred for development)
+#   4. Legacy sibling directory at ../some-ip
 
 if(NOT TARGET opensomeip)
     find_package(opensomeip QUIET)
     if(NOT opensomeip_FOUND)
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../some-ip/CMakeLists.txt")
+        set(_someip_source_dir "")
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/opensomeip/CMakeLists.txt")
+            set(_someip_source_dir "${CMAKE_CURRENT_SOURCE_DIR}/extern/opensomeip")
+        elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../some-ip/CMakeLists.txt")
+            set(_someip_source_dir "${CMAKE_CURRENT_SOURCE_DIR}/../some-ip")
+        endif()
+
+        if(_someip_source_dir)
             set(BUILD_TESTS_SAVED ${BUILD_TESTS})
             set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
             set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
             set(SOMEIP_DEV_TOOLS OFF CACHE BOOL "" FORCE)
             add_subdirectory(
-                "${CMAKE_CURRENT_SOURCE_DIR}/../some-ip"
+                "${_someip_source_dir}"
                 "${CMAKE_CURRENT_BINARY_DIR}/opensomeip"
                 EXCLUDE_FROM_ALL
             )
@@ -51,7 +63,7 @@ if(NOT TARGET opensomeip)
             message(FATAL_ERROR
                 "opensomeip not found. Either:\n"
                 "  1. Install opensomeip system-wide, or\n"
-                "  2. Place the opensomeip source tree at ../some-ip\n"
+                "  2. Run: git submodule update --init\n"
             )
         endif()
     endif()
