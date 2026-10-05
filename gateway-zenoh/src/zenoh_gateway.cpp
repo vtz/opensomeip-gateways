@@ -38,7 +38,7 @@ namespace {
 
 someip::sd::SdConfig make_sd_config(const ZenohConfig& zc) {
     someip::sd::SdConfig c;
-    c.multicast_address = "239.255.255.250";
+    c.multicast_address = "239.255.255.251";
     c.multicast_port = 30490;
     c.unicast_address = zc.someip_bind_address;
     c.unicast_port = zc.someip_bind_port;
@@ -294,6 +294,9 @@ struct ZenohGateway::Impl : someip::transport::ITransportListener {
         }
 
         rpc_client_ = std::make_unique<someip::rpc::RpcClient>(zc.rpc_client_id);
+        rpc_client_->set_remote_endpoint(someip::transport::Endpoint(
+            zc.someip_remote_address, zc.someip_remote_port,
+            someip::transport::TransportProtocol::UDP));
         rpc_client_->initialize();
 
         event_subscriber_ = std::make_unique<someip::events::EventSubscriber>(zc.rpc_client_id);

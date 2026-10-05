@@ -73,7 +73,7 @@ TEST(ConfigTest, SomeipEndpointConfigDefaults) {
     SomeipEndpointConfig config;
     EXPECT_EQ(config.local_address, "0.0.0.0");
     EXPECT_EQ(config.local_port, 30500);
-    EXPECT_EQ(config.sd_multicast, "239.255.255.250");
+    EXPECT_EQ(config.sd_multicast, "239.255.255.251");
     EXPECT_EQ(config.sd_port, 30490);
     EXPECT_FALSE(config.use_tcp);
 }
