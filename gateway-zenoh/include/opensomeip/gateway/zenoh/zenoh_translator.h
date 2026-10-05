@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "opensomeip/gateway/gateway_base.h"
 #include "opensomeip/gateway/translator.h"
 #include "someip/message.h"
 

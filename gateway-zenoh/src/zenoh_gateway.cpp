@@ -94,10 +94,10 @@ struct ZenohGateway::Impl : someip::transport::ITransportListener {
 
     std::unique_ptr<::zenoh::Session> session_;
     std::vector<::zenoh::Publisher> zenoh_publishers_;
-    std::vector<::zenoh::Subscriber> zenoh_subscribers_;
+    std::vector<::zenoh::Subscriber<void>> zenoh_subscribers_;
     std::vector<::zenoh::Queryable<void>> zenoh_queryables_;
     std::vector<::zenoh::LivelinessToken> liveliness_tokens_;
-    std::vector<::zenoh::Subscriber> liveliness_subscribers_;
+    std::vector<::zenoh::Subscriber<void>> liveliness_subscribers_;
 
     void on_message_received(someip::MessagePtr message,
                              const someip::transport::Endpoint& sender) override {
@@ -191,7 +191,7 @@ struct ZenohGateway::Impl : someip::transport::ITransportListener {
 
         ExternalMessage ext;
         ext.topic_or_key = std::string(key);
-        ext.payload.assign(sample.get_payload().begin(), sample.get_payload().end());
+        ext.payload = sample.get_payload().as_vector();
         ext.source_service_id = parsed.service_id;
         ext.source_method_id = parsed.method_or_event_id;
         ext.source_instance_id = parsed.instance_id;
@@ -232,7 +232,7 @@ struct ZenohGateway::Impl : someip::transport::ITransportListener {
         std::vector<uint8_t> wire;
         auto pl = query.get_payload();
         if (pl.has_value()) {
-            wire.assign(pl->get().begin(), pl->get().end());
+            wire = pl->get().as_vector();
         }
 
         someip::Message zenoh_envelope;
@@ -251,7 +251,8 @@ struct ZenohGateway::Impl : someip::transport::ITransportListener {
             return;
         }
 
-        const auto sync = rpc_client_->call_method_sync(service_id, method_id, rpc_params, {});
+        const auto sync = rpc_client_->call_method_sync(service_id, method_id, rpc_params,
+                                                        someip::rpc::RpcTimeout{});
 
         someip::Message resp(someip::MessageId(service_id, method_id),
                              someip::RequestId(gw_.zenoh_config().rpc_client_id, 0x0001),

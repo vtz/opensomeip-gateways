@@ -49,6 +49,9 @@ target_link_libraries(opensomeip-gateway-zenoh
         ${_zenoh_link_targets}
 )
 
+# zenoh.hxx selects the zenoh-c backend only when this macro is set.
+target_compile_definitions(opensomeip-gateway-zenoh PUBLIC ZENOHCXX_ZENOHC)
+
 if(BUILD_TESTS)
     add_executable(test_zenoh_gateway
         tests/test_zenoh_gateway.cpp
