@@ -242,6 +242,8 @@ someip::Result Ros2Gateway::start() {
 
     if (config_.enable_rpc_client && !rpc_client_) {
         rpc_client_ = std::make_shared<someip::rpc::RpcClient>(config_.rpc_client_id);
+        rpc_client_->set_remote_endpoint(
+            someip::transport::Endpoint("127.0.0.1", someip::rpc::SOMEIP_DEFAULT_RPC_PORT));
     }
     if (rpc_client_) {
         rpc_client_->initialize();

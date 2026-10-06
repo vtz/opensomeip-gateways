@@ -79,7 +79,7 @@ gateway:
   someip:
     local_address: "0.0.0.0"
     local_port: 30500
-    sd_multicast: "239.255.255.250"
+    sd_multicast: "239.255.255.251"
     sd_port: 30490
 
   # Protocol-specific section

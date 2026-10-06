@@ -19,7 +19,7 @@ namespace gateway {
 struct SomeipEndpointConfig {
     std::string local_address{"0.0.0.0"};
     uint16_t local_port{30500};
-    std::string sd_multicast{"239.255.255.250"};
+    std::string sd_multicast{"239.255.255.251"};
     uint16_t sd_port{30490};
     bool use_tcp{false};
 };

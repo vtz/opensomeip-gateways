@@ -255,6 +255,8 @@ someip::Result Iceoryx2Gateway::start() {
     }
 
     rpc_client_ = std::make_unique<someip::rpc::RpcClient>(config_.someip_client_id);
+    rpc_client_->set_remote_endpoint(
+        someip::transport::Endpoint("127.0.0.1", someip::rpc::SOMEIP_DEFAULT_RPC_PORT));
     if (!rpc_client_->initialize()) {
         (void)stop();
         return someip::Result::NOT_INITIALIZED;

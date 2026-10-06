@@ -179,7 +179,11 @@ GrpcGateway::GrpcGateway(const GrpcConfig& config)
     : GatewayBase(config.gateway_name, "grpc"),
       config_(config),
       rpc_client_(std::make_unique<someip::rpc::RpcClient>(config.someip_bridge_client_id)),
-      event_subscriber_(std::make_unique<someip::events::EventSubscriber>(config.someip_bridge_client_id)) {}
+      event_subscriber_(std::make_unique<someip::events::EventSubscriber>(config.someip_bridge_client_id)) {
+    // v0.2.0 no longer sends to 127.0.0.1:30490. Point at the default RPC server port.
+    rpc_client_->set_remote_endpoint(
+        someip::transport::Endpoint("127.0.0.1", someip::rpc::SOMEIP_DEFAULT_RPC_PORT));
+}
 
 GrpcGateway::~GrpcGateway() {
     stop();
