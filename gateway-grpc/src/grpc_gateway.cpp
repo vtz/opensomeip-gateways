@@ -131,9 +131,11 @@ private:
         owner_->record_someip_to_external(frame.envelope().ByteSizeLong());
     };
 
-    bool sub_ok = owner_->event_subscriber().subscribe_eventgroup(
-        static_cast<uint16_t>(request->service_id()), static_cast<uint16_t>(request->instance_id()),
-        static_cast<uint16_t>(request->event_group_id()), on_evt, nullptr, {});
+    const bool sub_ok = owner_->event_subscriber().subscribe_eventgroup(
+                            static_cast<uint16_t>(request->service_id()),
+                            static_cast<uint16_t>(request->instance_id()),
+                            static_cast<uint16_t>(request->event_group_id()), on_evt, nullptr,
+                            {}) == someip::Result::SUCCESS;
 
     if (!sub_ok) {
         owner_->unregister_event_stream(key, sink);
