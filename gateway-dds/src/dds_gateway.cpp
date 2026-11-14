@@ -340,7 +340,7 @@ bool DdsGateway::subscribe_someip_eventgroup(uint16_t service_id, uint16_t insta
                 someip::ReturnCode::E_OK);
             notification.set_payload(n.event_data);
             on_someip_message(notification);
-        });
+        }) == someip::Result::SUCCESS;
 }
 
 void DdsGateway::deliver_inbound_from_dds(const someip::Message& reconstructed,

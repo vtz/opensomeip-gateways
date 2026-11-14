@@ -135,7 +135,7 @@ bool MqttGateway::subscribe_someip_eventgroup(uint16_t service_id, uint16_t inst
             someip::Message msg(msg_id, req_id, someip::MessageType::NOTIFICATION);
             msg.set_payload(n.event_data);
             on_someip_message(msg);
-        });
+        }) == someip::Result::SUCCESS;
 }
 
 someip::Result MqttGateway::start() {

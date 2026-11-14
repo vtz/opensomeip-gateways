@@ -224,7 +224,7 @@ bool Ros2Gateway::subscribe_someip_eventgroup(uint16_t service_id, uint16_t inst
                 someip::ReturnCode::E_OK);
             msg.set_payload(n.event_data);
             on_someip_message(msg);
-        });
+        }) == someip::Result::SUCCESS;
 }
 
 someip::Result Ros2Gateway::start() {
