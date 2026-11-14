@@ -32,14 +32,16 @@ option(BUILD_GATEWAY_DBUS     "Build SOME/IP <-> D-Bus gateway"    OFF)
 option(BUILD_GATEWAY_DDS      "Build SOME/IP <-> DDS gateway"      OFF)
 
 # ── opensomeip core dependency ───────────────────────────────────────────────
+# Gateways call EventSubscriber::subscribe_eventgroup and compare the Result
+# introduced in v0.2.1. An older installed package must not hide the submodule.
 # Resolution order:
 #   1. Already present as a CMake target (e.g. super-build)
-#   2. Installed system-wide (find_package)
+#   2. Installed opensomeip >= 0.2.1 (find_package)
 #   3. Git submodule at extern/opensomeip (preferred for development)
 #   4. Legacy sibling directory at ../some-ip
 
 if(NOT TARGET opensomeip)
-    find_package(opensomeip QUIET)
+    find_package(opensomeip 0.2.1 QUIET)
     if(NOT opensomeip_FOUND)
         set(_someip_source_dir "")
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/opensomeip/CMakeLists.txt")
@@ -61,8 +63,8 @@ if(NOT TARGET opensomeip)
             set(BUILD_TESTS ${BUILD_TESTS_SAVED} CACHE BOOL "" FORCE)
         else()
             message(FATAL_ERROR
-                "opensomeip not found. Either:\n"
-                "  1. Install opensomeip system-wide, or\n"
+                "opensomeip >= 0.2.1 not found. Either:\n"
+                "  1. Install opensomeip 0.2.1 or newer, or\n"
                 "  2. Run: git submodule update --init\n"
             )
         endif()
